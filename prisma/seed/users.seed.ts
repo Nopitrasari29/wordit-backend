@@ -1,70 +1,66 @@
-import { prisma } from "../../src/config/database"
-import { hashPassword } from "../../src/utils/hash"
+import { prisma } from "../../src/config/database";
+import { hashPassword } from "../../src/utils/hash";
+import { Role } from "@prisma/client"; // ✅ Import Enum Role agar sinkron 100%
 
 export const seedUsers = async () => {
-  console.log("🌱 Seeding users...")
+  console.log("🌱 Seeding users...");
 
   const users = [
-    // Admin
     {
       name: "Admin WordIT",
       email: "admin@wordit.com",
       password: await hashPassword("admin123"),
-      role: "ADMIN" as const,
+      role: Role.ADMIN,
     },
-    // Creator SD
     {
-      name: "Bu Sari",
+      name: "Bu Sari (Guru SD)",
       email: "sari@wordit.com",
-      password: await hashPassword("creator123"),
-      role: "CREATOR" as const,
+      password: await hashPassword("password123"),
+      role: Role.TEACHER, // ✅ Menggunakan Role.TEACHER
     },
-    // Creator University
     {
-      name: "Pak Budi",
+      name: "Pak Budi (Dosen Univ)",
       email: "budi@wordit.com",
-      password: await hashPassword("creator123"),
-      role: "CREATOR" as const,
+      password: await hashPassword("password123"),
+      role: Role.TEACHER, // ✅ Menggunakan Role.TEACHER
     },
-    // Student SD
     {
-      name: "Andi Kecil",
+      name: "Andi Mahasiswa",
       email: "andi@wordit.com",
-      password: await hashPassword("student123"),
-      role: "STUDENT" as const,
+      password: await hashPassword("password123"),
+      role: Role.STUDENT,
     },
-    // Student SMP
-    {
-      name: "Beni Siswa",
-      email: "beni@wordit.com",
-      password: await hashPassword("student123"),
-      role: "STUDENT" as const,
-    },
-    // Student University
-    {
-      name: "Citra Mahasiswa",
-      email: "citra@wordit.com",
-      password: await hashPassword("student123"),
-      role: "STUDENT" as const,
-    },
-  ]
+  ];
 
-  const createdUsers = []
+  const createdUsers = [];
 
   for (const user of users) {
+    // Gunakan upsert agar jika email sudah ada, data hanya di-update (mencegah error duplikasi)
     const created = await prisma.user.upsert({
       where: { email: user.email },
-      update: {},
-      create: {
-        ...user,
-        profile: {
-          create: {}
-        }
+      update: {
+        name: user.name,
+        password: user.password,
+        role: user.role,
       },
-    })
-    createdUsers.push(created)
-    console.log(`  ✅ ${created.role}: ${created.name} (${created.email})`)
+      create: {
+        name: user.name,
+        email: user.email,
+        password: user.password,
+        role: user.role,
+        // Pastikan UserProfile juga dibuat saat registrasi user baru
+        profile: {
+          create: {
+            bio: "Halo, saya pengguna WordIT!",
+            totalPoints: 0,
+            badges: [],
+          },
+        },
+      },
+    });
+    createdUsers.push(created);
+    console.log(`  ✅ ${created.role}: ${created.name}`);
   }
 
-  return createdUsers
-}
+  return createdUsers;
+};

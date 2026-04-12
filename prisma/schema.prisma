@@ -11,7 +11,7 @@ datasource db {
 
 enum Role {
   STUDENT
-  CREATOR
+  TEACHER
   ADMIN
 }
 
@@ -22,13 +22,12 @@ enum EducationLevel {
 }
 
 enum TemplateType {
-  QUIZ
-  TRUE_OR_FALSE
+  ANAGRAM
   FLASHCARD
-  MATCHING_PAIR
-  WORD_SEARCH
-  SHORT_ANSWER
   HANGMAN
+  MAZE_CHASE
+  SPIN_THE_WHEEL
+  WORD_SEARCH
 }
 
 enum DifficultyLevel {
@@ -61,7 +60,7 @@ model UserProfile {
   userId      String   @unique
   bio         String?
   totalPoints Int      @default(0)
-  badges      Json     @default("[]")
+  badges      Json     @default("[]") // Simpan array badges
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -73,7 +72,7 @@ model UserProfile {
 
 model Game {
   id             String          @id @default(uuid())
-  title          String
+  title          String          @unique 
   description    String?
   templateType   TemplateType
   educationLevel EducationLevel
@@ -84,8 +83,7 @@ model Game {
   thumbnailUrl   String?
   shareCode      String?         @unique
 
-  // Semua soal & jawaban disimpan di sini
-  gameJson Json
+  gameJson Json // ✅ Semua soal disimpan di sini
 
   creatorId String
   createdAt DateTime @default(now())
@@ -94,7 +92,9 @@ model Game {
   creator     User          @relation("GameCreator", fields: [creatorId], references: [id])
   sessions    GameSession[]
   ltiContexts LtiContext[]
-
+  
+  // ✅ Indexing untuk filter jenjang agar pencarian di dashboard cepat
+  @@index([educationLevel, templateType]) 
   @@map("games")
 }
 
@@ -112,6 +112,7 @@ model GameSession {
   user   User   @relation(fields: [userId], references: [id])
   result Result?
 
+  @@index([userId, gameId]) // ✅ Indexing untuk histori user
   @@map("game_sessions")
 }
 
@@ -126,10 +127,7 @@ model Result {
   timeSpent        Int             @default(0)
   difficultyPlayed DifficultyLevel @default(MEDIUM)
 
-  // Detail jawaban per soal
   answersDetail   Json  @default("[]")
-  
-  // Hasil AI grading (untuk SHORT_ANSWER)
   aiGradingResult Json?
 
   completedAt DateTime @default(now())

@@ -1,36 +1,29 @@
-import multer from "multer"
-import path from "path"
-import fs from "fs"
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
-const uploadDir = "uploads/profile-picture"
+// Konfigurasi penyimpanan dasar
+const storage = multer.memoryStorage(); // Kita simpan di RAM dulu sebelum diproses FileManager
 
-// Pastikan folder ada
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true })
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir)
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
-    const ext = path.extname(file.originalname)
-    cb(null, `photo-${uniqueSuffix}${ext}`)
-  }
-})
-
+// Filter file agar hanya gambar
 const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ["image/jpeg", "image/png", "image/webp"]
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
   if (allowed.includes(file.mimetype)) {
-    cb(null, true)
+    cb(null, true);
   } else {
-    cb(new Error("Only JPEG, PNG, and WebP images are allowed"))
+    cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
   }
-}
+};
 
-export const uploadPhoto = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // max 5MB
-}).single("photo")
+/**
+ * Middleware Factory untuk Upload File
+ * @param fieldName Nama field di form-data (contoh: 'profile_picture' atau 'thumbnail_image')
+ * @param maxCount Jumlah file maksimal
+ */
+export const uploadMiddleware = (fieldName: string, maxCount: number = 1) => {
+  return multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 }, // Max 5MB
+  }).single(fieldName); 
+};  

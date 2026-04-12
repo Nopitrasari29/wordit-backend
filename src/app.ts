@@ -4,6 +4,7 @@ import path from "path"
 import { errorResponse } from "./utils/response"
 import authRoute from "./modules/auth/auth.route"
 import userRoute from "./modules/user/user.route"
+import gameRoute from "./modules/game/game.route"
 
 const app = express()
 
@@ -11,12 +12,13 @@ app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-// Serve static files (foto profil)
+// Serve static files
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")))
 
 // Routes
 app.use("/api/auth", authRoute)
 app.use("/api/users", userRoute)
+app.use("/api/games", gameRoute)
 
 // Health check
 app.get("/", (req, res) => {
