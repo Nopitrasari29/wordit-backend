@@ -17,7 +17,8 @@ enum Role {
 
 enum EducationLevel {
   SD
-  SMP_SMA
+  SMP
+  SMA
   UNIVERSITY
 }
 

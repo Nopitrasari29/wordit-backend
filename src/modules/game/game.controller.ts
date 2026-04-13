@@ -1,4 +1,5 @@
 import type { Request, Response } from "express"
+import { EducationLevel } from "@prisma/client" // ✅ Tambahkan import Enum Prisma
 import { createGameSchema, updateGameSchema, gameQuerySchema } from "./game.schema"
 import * as gameService from "./game.service"
 import { successResponse, errorResponse } from "../../utils/response"
@@ -135,14 +136,16 @@ export const getMyGames = async (req: Request, res: Response) => {
 export const getTemplatesByLevel = async (req: Request, res: Response) => {
   try {
     const level = req.params["level"] as string
-    const validLevels = ["SD", "SMP_SMA", "UNIVERSITY"]
+    
+    // ✅ REVISI: Menggunakan values dari Enum EducationLevel agar sinkron dengan Database
+    const validLevels = Object.values(EducationLevel) as string[]
 
     if (!validLevels.includes(level)) {
-      res.status(400).json(errorResponse("Invalid education level. Use SD, SMP_SMA, or UNIVERSITY"))
+      res.status(400).json(errorResponse(`Invalid education level. Use one of: ${validLevels.join(", ")}`))
       return
     }
 
-    const templates = await gameService.getTemplatesByLevel(level)
+    const templates = await gameService.getTemplatesByLevel(level as EducationLevel)
     res.status(200).json(successResponse(templates, "Templates fetched"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to get templates"

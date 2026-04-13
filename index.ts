@@ -2,7 +2,8 @@ import app from "./src/app"
 import { env } from "./src/config/env"
 import { createServer } from "http"
 
-const port = parseInt(env.port)
+// Pastikan env.port ada isinya, kalau ragu ganti baris ini sementara:
+const port = env.port ? parseInt(env.port) : 3000
 
 const server = createServer(app)
 

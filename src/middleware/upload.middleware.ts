@@ -1,12 +1,9 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 
-// Konfigurasi penyimpanan dasar
-const storage = multer.memoryStorage(); // Kita simpan di RAM dulu sebelum diproses FileManager
+// Simpan di RAM sebelum diproses FileManager
+const storage = multer.memoryStorage();
 
-// Filter file agar hanya gambar
-const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (req: any, file: any, cb: any) => {
   const allowed = ["image/jpeg", "image/png", "image/webp"];
   if (allowed.includes(file.mimetype)) {
     cb(null, true);
@@ -15,15 +12,14 @@ const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.
   }
 };
 
-/**
- * Middleware Factory untuk Upload File
- * @param fieldName Nama field di form-data (contoh: 'profile_picture' atau 'thumbnail_image')
- * @param maxCount Jumlah file maksimal
- */
-export const uploadMiddleware = (fieldName: string, maxCount: number = 1) => {
-  return multer({
-    storage: storage,
-    fileFilter: fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 }, // Max 5MB
-  }).single(fieldName); 
-};  
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Max 5MB
+});
+
+// ✅ Export versi modular (untuk game/user baru)
+export const uploadMiddleware = (fieldName: string) => upload.single(fieldName);
+
+// ✅ Export versi lama (agar error 'uploadPhoto not found' hilang)
+export const uploadPhoto = upload.single("profile_picture");

@@ -1,28 +1,26 @@
 import { prisma } from "../../src/config/database";
-import { TemplateType, EducationLevel, DifficultyLevel, Role } from "@prisma/client"; // ✅ Tambahkan Role di sini
+import { TemplateType, EducationLevel, DifficultyLevel, Role } from "@prisma/client";
 
 export const seedGames = async () => {
   console.log("🌱 Seeding 6 Golden Templates...");
 
-  // ✅ Gunakan Role.TEACHER dari @prisma/client (Ini memperbaiki Error 1)
-  const teacher = await prisma.user.findFirst({
-    where: { role: Role.TEACHER } 
-  });
-
+  const teacher = await prisma.user.findFirst({ where: { role: Role.TEACHER } });
   if (!teacher) {
     throw new Error("❌ Error: Belum ada user dengan role TEACHER di database!");
   }
 
   const teacherId = teacher.id;
 
-  const games =[
+  const games = [
     {
       title: "Hafalan Kosakata Inggris",
       description: "Belajar kosakata dasar sehari-hari",
       templateType: TemplateType.FLASHCARD,
       educationLevel: EducationLevel.SD,
       difficulty: DifficultyLevel.EASY,
+      isPublished: true,
       creatorId: teacherId,
+      thumbnailUrl: "default.jpg",
       gameJson: { cards: [{ front: "Apple", back: "Apel" }] }
     },
     {
@@ -31,26 +29,32 @@ export const seedGames = async () => {
       templateType: TemplateType.HANGMAN,
       educationLevel: EducationLevel.SD,
       difficulty: DifficultyLevel.MEDIUM,
+      isPublished: true,
       creatorId: teacherId,
+      thumbnailUrl: "default.jpg",
       gameJson: { words: ["KUCING", "KELINCI"] }
     },
     {
       title: "Cari Kata Sains",
       description: "Cari kata tersembunyi di dalam grid",
       templateType: TemplateType.WORD_SEARCH,
-      educationLevel: EducationLevel.SMP_SMA,
+      educationLevel: EducationLevel.SMP, // ✅ Sudah SMP
       difficulty: DifficultyLevel.MEDIUM,
+      isPublished: true,
       creatorId: teacherId,
-      gameJson: { words:["ATOM", "GAYA"] }
+      thumbnailUrl: "default.jpg",
+      gameJson: { words: ["ATOM", "GAYA"] }
     },
     {
-      title: "Susun Huruf Teknis",
-      description: "Susun anagram dari istilah IT",
+      title: "Geometri SMA",
+      description: "Susun rumus pythagoras",
       templateType: TemplateType.ANAGRAM,
-      educationLevel: EducationLevel.UNIVERSITY,
+      educationLevel: EducationLevel.SMA, // ✅ Sudah SMA
       difficulty: DifficultyLevel.HARD,
+      isPublished: true,
       creatorId: teacherId,
-      gameJson: { words: ["PRISMA", "DOCKER"] }
+      thumbnailUrl: "default.jpg",
+      gameJson: { words: ["SEGITIGA", "PYTHAGORAS"] }
     },
     {
       title: "Petualangan Matematika",
@@ -58,7 +62,9 @@ export const seedGames = async () => {
       templateType: TemplateType.MAZE_CHASE,
       educationLevel: EducationLevel.SD,
       difficulty: DifficultyLevel.MEDIUM,
+      isPublished: true,
       creatorId: teacherId,
+      thumbnailUrl: "default.jpg",
       gameJson: { questions: [{ q: "1+1?", a: "2" }] }
     },
     {
@@ -67,22 +73,18 @@ export const seedGames = async () => {
       templateType: TemplateType.SPIN_THE_WHEEL,
       educationLevel: EducationLevel.UNIVERSITY,
       difficulty: DifficultyLevel.HARD,
+      isPublished: true,
       creatorId: teacherId,
+      thumbnailUrl: "default.jpg",
       gameJson: { items: ["Diskusi 1", "Diskusi 2"] }
     }
   ];
 
-  // ✅ Ini memperbaiki Error 2: Kita bersihkan tabel game lama dulu, lalu buat baru (tanpa upsert)
   await prisma.game.deleteMany({});
-
   for (const game of games) {
     const created = await prisma.game.create({
-      data: {
-        ...game,
-        thumbnailUrl: "default.jpg",
-        isPublished: true,
-      }
+      data: game
     });
-    console.log(`  ✅[${created.educationLevel}] ${created.templateType}: ${created.title}`);
+    console.log(`  ✅ [${created.educationLevel}] ${created.templateType}: ${created.title}`);
   }
 };
