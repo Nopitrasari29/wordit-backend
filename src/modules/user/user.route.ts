@@ -1,12 +1,18 @@
-import { Router } from "express"
-import * as userController from "./user.controller"
-import { authMiddleware } from "../../middleware/auth.middleware"
-import { uploadPhoto } from "../../middleware/upload.middleware"
+import { Router } from "express";
+import * as userController from "./user.controller";
+import { authMiddleware } from "../../middleware/auth.middleware";
+import { uploadMiddleware } from "../../middleware/upload.middleware"; 
 
-const router = Router()
+const router = Router();
 
-router.get("/profile", authMiddleware, userController.getProfile)
-router.patch("/profile", authMiddleware, uploadPhoto, userController.updateProfile)
-router.get("/my-games", authMiddleware, userController.getMyGames)
+router.get("/", authMiddleware(["ADMIN"]), userController.getAllUsers);
+router.get("/profile", authMiddleware(), userController.getProfile);
+router.patch(
+  "/profile", 
+  authMiddleware(), 
+  uploadMiddleware("profile_picture"), 
+  userController.updateProfile
+);
+router.get("/my-games", authMiddleware(), userController.getMyGames);
 
-export default router
+export default router;

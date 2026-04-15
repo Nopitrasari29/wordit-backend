@@ -33,12 +33,9 @@ export const updateProfile = async (req: Request, res: Response) => {
       return
     }
 
-    // Ambil path foto kalau ada upload
-    const photoUrl = req.file
-      ? `/uploads/profile-picture/${req.file.filename}`
-      : undefined
-
-    const updated = await userService.updateProfile(userId, parsed.data, photoUrl)
+    // ✅ Langsung kirim req.file ke service!
+    const updated = await userService.updateProfile(userId, parsed.data, req.file)
+    
     res.status(200).json(successResponse(updated, "Profile updated"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to update profile"
@@ -58,6 +55,29 @@ export const getMyGames = async (req: Request, res: Response) => {
     res.status(200).json(successResponse(games, "Games fetched"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to get games"
+    res.status(400).json(errorResponse(message))
+  }
+}
+
+// ✅ FUNGSI BARU UNTUK ADMIN (Yang tadi bikin error merah)
+export const getAllUsers = async (req: Request, res: Response) => {
+  try {
+    // Ambil query parameter untuk pagination/search (jika ada)
+    const query = req.query as any; 
+
+    // Panggil fungsi getAllUsers dari service
+    const result = await userService.getAllUsers(query);
+    
+    // Kirim response
+    res.status(200).json({
+      status: "success",
+      message: "Users fetched successfully",
+      // Handle jika service mengembalikan objek pagination { data, meta }
+      data: (result as any).data ? (result as any).data : result,
+      meta: (result as any).meta ? (result as any).meta : undefined
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to get users"
     res.status(400).json(errorResponse(message))
   }
 }
