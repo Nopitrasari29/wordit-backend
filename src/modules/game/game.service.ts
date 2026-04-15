@@ -8,7 +8,6 @@ export const getGames = async (query: GameQueryInput) => {
   const limit = parseInt(query.limit);
   const skip = (page - 1) * limit;
 
-  // ✅ REVISI: Menggunakan Prisma.GameWhereInput dengan filter yang lebih aman
   const where: Prisma.GameWhereInput = {
     isPublished: true,
     ...(query.educationLevel && { educationLevel: query.educationLevel as EducationLevel }),
@@ -202,7 +201,6 @@ export const getMyGames = async (userId: string) => {
   return games;
 };
 
-// ✅ REVISI PATEN: Mapping 6 Game Berdasarkan Jenjang
 export const getTemplatesByLevel = async (educationLevel: EducationLevel) => {
   const templateMapping: Record<EducationLevel, TemplateType[]> = {
     SD: [
