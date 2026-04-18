@@ -1,34 +1,58 @@
 import { getGroqResponse } from "./providers/groq.provider";
 import { getGeminiResponse } from "./providers/gemini.provider";
+import { TemplateType } from "@prisma/client";
 
 /**
- * Mendefinisikan instruksi sistem agar AI "sadar" akan perbedaan jenjang pendidikan.
- * Memenuhi kriteria AI-03 (Education Level Awareness).
+ * 🎯 REVISI: Prompt dinamis sesuai Template Type (Paten & Sinkron)
  */
 const getSystemPrompt = (educationLevel: string, templateType: string): string => {
+  let formatInstruction = "";
+
+  // Sesuaikan instruksi format berdasarkan tipe game
+  switch (templateType) {
+    case "ANAGRAM":
+    case "HANGMAN":
+    case "WORD_SEARCH":
+      formatInstruction = `
+      Struktur JSON (Array of Object):
+      {
+        "template": "${templateType}",
+        "words": [
+          { "word": "KATA_JAWABAN", "hint": "Petunjuk terkait kata tersebut" }
+        ]
+      }`;
+      break;
+    case "FLASHCARD":
+      formatInstruction = `
+      Struktur JSON (Array of Object):
+      {
+        "template": "FLASHCARD",
+        "cards": [
+          { "front": "Istilah/Pertanyaan", "back": "Definisi/Jawaban" }
+        ]
+      }`;
+      break;
+    default: // MAZE_CHASE & SPIN_THE_WHEEL
+      formatInstruction = `
+      Struktur JSON (Array of Object):
+      {
+        "template": "${templateType}",
+        "questions": [
+          { "question": "Pertanyaan kuis", "answer": "Jawaban benar" }
+        ]
+      }`;
+  }
+
   return `Anda adalah pakar pendidikan untuk jenjang ${educationLevel}.
 Tugas Anda adalah menghasilkan 5 soal kuis edukatif dalam Bahasa Indonesia untuk tipe game: ${templateType}.
 
 Ketentuan Khusus berdasarkan Jenjang:
-1. SD (Sekolah Dasar): Gunakan bahasa yang sederhana, ramah anak, dan contoh dari kehidupan sehari-hari.
-2. SMP_SMA (Sekolah Menengah): Gunakan bahasa formal-edukatif dengan tingkat kesulitan menengah.
-3. UNIVERSITY (Perguruan Tinggi): Gunakan terminologi akademik tingkat lanjut, teori mendalam, dan analisis kritis.
+1. SD: Bahasa sederhana, ramah anak, contoh konkret.
+2. SMP/SMA: Bahasa formal-edukatif, tingkat kesulitan menengah.
+3. UNIVERSITY: Terminologi akademik lanjut dan analisis kritis.
 
-Struktur JSON WAJIB (Jangan berikan teks penjelasan, HANYA JSON):
-{
-  "questions": [
-    {
-      "question": "pertanyaan",
-      "options": {
-        "A": "pilihan A",
-        "B": "pilihan B",
-        "C": "pilihan C",
-        "D": "pilihan D"
-      },
-      "answer": "A/B/C/D"
-    }
-  ]
-}
+WAJIB ikuti struktur JSON ini (HANYA JSON, jangan ada teks lain):
+${formatInstruction}
 
 Jawab HANYA JSON valid.`;
 };
@@ -41,23 +65,19 @@ Output JSON: { "feedback": "..." }
 Jawab HANYA JSON valid.`;
 };
 
-// 🔥 JSON extractor anti error AI (sangat penting untuk kestabilan sistem)
 const extractJSON = (text: string) => {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("JSON tidak ditemukan dalam response AI");
   return JSON.parse(match[0]);
 };
 
-/**
- * FUNGSI GENERATOR KUIS (AI-01, AI-02, AI-03)
- */
 export const generateQuizContent = async (
   topic: string,
   educationLevel: string,
   templateType: string
 ) => {
   const systemPrompt = getSystemPrompt(educationLevel, templateType);
-  const userPrompt = `Topik Kuis: ${topic}`;
+  const userPrompt = `Topik/Materi Kuis: ${topic}`;
 
   try {
     const result = await getGroqResponse(systemPrompt, userPrompt);
@@ -65,20 +85,16 @@ export const generateQuizContent = async (
     return JSON.parse(result!);
   } catch (error) {
     console.warn("[AI System]: Groq gagal, mengalihkan ke Gemini (Fallback)... 🔄");
-
     try {
       const res = await getGeminiResponse(systemPrompt, userPrompt);
       return extractJSON(res);
     } catch (err) {
-      console.error("[AI System]: Seluruh provider gagal memproses permintaan.");
+      console.error("[AI System]: Seluruh provider gagal.");
       throw err;
     }
   }
 };
 
-/**
- * FUNGSI FEEDBACK (AI-04)
- */
 export const generateFeedbackContent = async (
   questionText: string,
   correctAnswer: string
@@ -88,16 +104,12 @@ export const generateFeedbackContent = async (
 
   try {
     const result = await getGroqResponse(systemPrompt, userPrompt);
-    console.log("[AI System]: Feedback berhasil via Groq ✅");
     return JSON.parse(result!);
   } catch (error) {
-    console.warn("[AI System]: Groq gagal, fallback Gemini untuk feedback... 🔄");
-
     try {
       const res = await getGeminiResponse(systemPrompt, userPrompt);
       return extractJSON(res);
     } catch (err) {
-      console.error("[AI System]: Gagal mendapatkan feedback.");
       throw err;
     }
   }

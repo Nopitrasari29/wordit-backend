@@ -2,11 +2,11 @@ import { prisma } from "../../src/config/database";
 import { TemplateType, EducationLevel, DifficultyLevel, Role } from "@prisma/client";
 
 export const seedGames = async () => {
-  console.log("🌱 Seeding 6 Golden Templates...");
+  console.log("🌱 Seeding 6 Golden Templates (Standardized Mode)...");
 
   const teacher = await prisma.user.findFirst({ where: { role: Role.TEACHER } });
   if (!teacher) {
-    throw new Error("❌ Error: Belum ada user dengan role TEACHER di database!");
+    throw new Error("❌ Error: Belum ada user dengan role TEACHER! Jalankan seedUsers dulu.");
   }
 
   const teacherId = teacher.id;
@@ -20,8 +20,10 @@ export const seedGames = async () => {
       difficulty: DifficultyLevel.EASY,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { cards: [{ front: "Apple", back: "Apel" }] }
+      shareCode: "JOINSD",
+      gameJson: { 
+        cards: [{ front: "Apple", back: "Apel" }] 
+      }
     },
     {
       title: "Tebak Nama Hewan",
@@ -31,30 +33,36 @@ export const seedGames = async () => {
       difficulty: DifficultyLevel.MEDIUM,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { words: ["KUCING", "KELINCI"] }
+      shareCode: "ANIMAL",
+      gameJson: { 
+        words: [{ word: "KUCING", hint: "Hewan yang suka mengeong" }] 
+      }
     },
     {
       title: "Cari Kata Sains",
       description: "Cari kata tersembunyi di dalam grid",
       templateType: TemplateType.WORD_SEARCH,
-      educationLevel: EducationLevel.SMP, // ✅ Sudah SMP
+      educationLevel: EducationLevel.SMP,
       difficulty: DifficultyLevel.MEDIUM,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { words: ["ATOM", "GAYA"] }
+      shareCode: "SAINS1",
+      gameJson: { 
+        words: [{ word: "ATOM", hint: "Bagian terkecil dari materi" }] 
+      }
     },
     {
       title: "Geometri SMA",
-      description: "Susun rumus pythagoras",
+      description: "Susun kata terkait geometri",
       templateType: TemplateType.ANAGRAM,
-      educationLevel: EducationLevel.SMA, // ✅ Sudah SMA
+      educationLevel: EducationLevel.SMA,
       difficulty: DifficultyLevel.HARD,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { words: ["SEGITIGA", "PYTHAGORAS"] }
+      shareCode: "SMA123",
+      gameJson: { 
+        words: [{ word: "SEGITIGA", hint: "Bangun datar dengan tiga sudut" }] 
+      }
     },
     {
       title: "Petualangan Matematika",
@@ -64,8 +72,10 @@ export const seedGames = async () => {
       difficulty: DifficultyLevel.MEDIUM,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { questions: [{ q: "1+1?", a: "2" }] }
+      shareCode: "MAZE01",
+      gameJson: { 
+        questions: [{ question: "Berapakah 1+1?", answer: "2" }] 
+      }
     },
     {
       title: "Random Review Materi",
@@ -75,8 +85,10 @@ export const seedGames = async () => {
       difficulty: DifficultyLevel.HARD,
       isPublished: true,
       creatorId: teacherId,
-      thumbnailUrl: "default.jpg",
-      gameJson: { items: ["Diskusi 1", "Diskusi 2"] }
+      shareCode: "UNIVIT",
+      gameJson: { 
+        questions: [{ question: "Apa kepanjangan AI?", answer: "Artificial Intelligence" }] 
+      }
     }
   ];
 
@@ -85,6 +97,6 @@ export const seedGames = async () => {
     const created = await prisma.game.create({
       data: game
     });
-    console.log(`  ✅ [${created.educationLevel}] ${created.templateType}: ${created.title}`);
+    console.log(`  ✅ [${created.educationLevel}] ${created.templateType}: ${created.title} (Code: ${created.shareCode})`);
   }
 };
