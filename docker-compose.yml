@@ -1,16 +1,18 @@
+version: '3.8'
+
 services:
   database:
     image: postgres:16
     container_name: wordit-database
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${POSTGRES_PORT}:5432" # Mengambil port 5434 dari .env kamu
     environment:
       POSTGRES_DB: ${POSTGRES_NAME}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data # 🚀 Kunci permanen data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_NAME}"]
       interval: 10s
@@ -19,9 +21,10 @@ services:
     networks:
       - wordit-network
 
-  redis: # ✅ SEKARANG SUDAH MASUK KE DALAM BLOK SERVICES
+  redis:
     image: redis:alpine
     container_name: wordit-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     networks:
@@ -32,4 +35,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
+  postgres_data: # Definisi volume untuk penyimpanan jangka panjang

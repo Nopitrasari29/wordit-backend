@@ -19,13 +19,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── GLOBAL REQUEST LOGGER (DIREVISI UNTUK DEBUGGING) ────────────────
+// ─── GLOBAL REQUEST LOGGER (VERSI AMAN & ANTI-CRASH) ────────────────
 app.use((req, res, next) => {
   const time = new Date().toLocaleTimeString();
   console.log(`📡 [${time}] ${req.method} ${req.originalUrl}`);
   
-  // Jika ada data yang dikirim (POST/PATCH), tampilkan isinya
-  if (Object.keys(req.body).length > 0) {
+  // ✅ PERBAIKAN: Cek apakah req.body ada sebelum memanggil Object.keys
+  // Ini mencegah crash pada request GET atau LOGOUT yang body-nya kosong
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
     console.log("📦 Body:", JSON.stringify(req.body, null, 2));
   }
   next();
@@ -47,10 +48,10 @@ app.get("/", (req, res) => {
 
 // ─── ERROR HANDLING ─────────────────────────────────────────────────
 
-// 404 Handler: Jika rute tidak ditemukan
+// 404 Handler
 app.use((req, res) => {
   console.warn(`⚠️  404 - Not Found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json(errorResponse("Route not found - Periksa prefix /api/games kamu!"));
+  res.status(404).json(errorResponse("Route not found"));
 });
 
 // Global Error Handler
