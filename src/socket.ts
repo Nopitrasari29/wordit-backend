@@ -2,53 +2,97 @@ import { Server } from "socket.io";
 import { type Server as HttpServer } from "http";
 
 let io: Server;
+const rooms: Record<string, any[]> = {};
 
 export const initSocket = (httpServer: HttpServer) => {
   io = new Server(httpServer, {
     cors: { 
-      origin: "http://localhost:5173", // Sesuaikan dengan port Vite kamu
-      methods: ["GET", "POST"] 
-    }
+      origin: "http://localhost:5173", 
+      methods: ["GET", "POST"],
+      credentials: true
+    },
+    // Tambahkan ping timeout agar koneksi lebih stabil di laptop/ITS wifi
+    pingTimeout: 60000,
   });
 
   io.on("connection", (socket) => {
-    console.log("🎮 User connected to WordIT:", socket.id);
+    // Log setiap ada koneksi masuk untuk mastiin socket aktif
+    console.log(`🔌 New Connection: ${socket.id}`);
 
-    // 1. Join Lobby: Siswa masuk ke ruang tunggu kuis
-    socket.on("joinLobby", ({ code, playerName }) => {
-      const roomCode = code?.toUpperCase(); // Standarisasi Case
+    // 1. 👨‍🏫 HOST JOIN (Guru/Proyektor)
+    socket.on("hostJoin", (code: string) => {
+      console.log(`🔍 Received hostJoin request for code: ${code}`);
       
+      const roomCode = code?.toUpperCase().trim();
+      if (!roomCode) {
+        return console.error("❌ HostJoin failed: Code is empty");
+      }
+
       socket.join(roomCode);
-      console.log(`👤 Player [${playerName}] joined Room: ${roomCode}`);
-
-      // Broadcast ke semua orang di room tersebut (termasuk yang baru join)
-      // agar daftar pemain di FE terupdate secara real-time
-      // Catatan: Di sini kamu bisa kirim playerName atau list lengkap jika sudah ada state di BE
-      io.to(roomCode).emit("playerJoined", { playerName, socketId: socket.id });
-
-      // Event tambahan untuk sinkronisasi daftar pemain
-      // Tip: Kamu bisa menambahkan logic Redis di sini nanti untuk menyimpan list nama pemain permanen
-    });
-
-    // 2. Start Game: Guru menekan tombol mulai di Dashboard
-    socket.on("startGame", (code) => {
-      const roomCode = code?.toUpperCase();
-      console.log(`🚀 Game Started in Room: ${roomCode}`);
       
-      // Instruksikan semua Student di room ini untuk pindah ke halaman Play
-      io.to(roomCode).emit("gameStarted");
+      // 🎯 LOG INI WAJIB MUNCUL: Kalau nggak muncul, berarti FE belum kirim data
+      console.log(`✅ SUCCESS: Host joined Room [${roomCode}]`);
+      
+      // Kirim balik data pemain yang mungkin sudah nunggu duluan
+      if (rooms[roomCode]) {
+        console.log(`📦 Sending existing player list to Host: ${rooms[roomCode].length} players`);
+        io.to(roomCode).emit("updatePlayerList", rooms[roomCode]);
+      }
     });
 
-    // 3. Leave Room: Jika siswa menutup tab atau logout
-    socket.on("leaveLobby", ({ code, playerName }) => {
-        const roomCode = code?.toUpperCase();
-        socket.leave(roomCode);
-        console.log(`🏃 Player [${playerName}] left Room: ${roomCode}`);
-        io.to(roomCode).emit("playerLeft", playerName);
+    // 2. 👤 JOIN LOBBY (Siswa)
+    socket.on("joinLobby", ({ code, playerName }: { code: string; playerName: string }) => {
+      const roomCode = code?.toUpperCase().trim();
+      if (!roomCode || !playerName) return;
+
+      socket.join(roomCode);
+      
+      if (!rooms[roomCode]) {
+        rooms[roomCode] = [];
+      }
+
+      const currentRoom = rooms[roomCode];
+      if (currentRoom) {
+        // Cek ID ganda
+        const isExist = currentRoom.find(p => p.id === socket.id);
+        if (!isExist) {
+          currentRoom.push({ id: socket.id, name: playerName, score: 0 });
+        }
+
+        console.log(`👤 Player [${playerName}] joined Room: ${roomCode}`);
+        
+        // Kirim ke SEMUA (termasuk Host)
+        io.to(roomCode).emit("updatePlayerList", currentRoom);
+      }
     });
 
+    // 3. 🚀 START GAME
+    socket.on("startGame", (code: string) => {
+      const roomCode = code?.toUpperCase().trim();
+      if (!roomCode) return;
+
+      console.log(`🚀 START SIGNAL sent to Room: ${roomCode}`);
+      io.to(roomCode).emit("gameStarted", roomCode);
+    });
+
+    // 4. 🔌 DISCONNECT
     socket.on("disconnect", () => {
-      console.log("🔌 User disconnected from WordIT");
+      Object.keys(rooms).forEach((roomCode) => {
+        const currentRoom = rooms[roomCode];
+        if (currentRoom) {
+          const playerIndex = currentRoom.findIndex((p) => p.id === socket.id);
+          if (playerIndex !== -1) {
+            const playerName = currentRoom[playerIndex].name;
+            currentRoom.splice(playerIndex, 1);
+            io.to(roomCode).emit("updatePlayerList", currentRoom);
+            console.log(`👋 ${playerName} left ${roomCode}`);
+
+            if (currentRoom.length === 0) {
+              delete rooms[roomCode];
+            }
+          }
+        }
+      });
     });
   });
 
@@ -56,6 +100,6 @@ export const initSocket = (httpServer: HttpServer) => {
 };
 
 export const getIO = () => {
-  if (!io) throw new Error("🔥 Socket.io not initialized! Call initSocket first.");
+  if (!io) throw new Error("🔥 Socket.io not initialized!");
   return io;
 };

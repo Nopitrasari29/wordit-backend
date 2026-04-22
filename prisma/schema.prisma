@@ -1,3 +1,5 @@
+// ─── CONFIGURATION ──────────────────────────────────────────────────
+
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
@@ -37,7 +39,7 @@ enum DifficultyLevel {
   HARD
 }
 
-// ─── USER ────────────────────────────────────────────────────────────
+// ─── USER MODELS ─────────────────────────────────────────────────────
 
 model User {
   id        String   @id @default(uuid())
@@ -61,7 +63,7 @@ model UserProfile {
   userId      String   @unique
   bio         String?
   totalPoints Int      @default(0)
-  badges      Json     @default("[]") // Simpan array badges
+  badges      Json     @default("[]")
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -69,7 +71,7 @@ model UserProfile {
   @@map("user_profiles")
 }
 
-// ─── GAME ─────────────────────────────────────────────────────────────
+// ─── GAME MODELS ─────────────────────────────────────────────────────
 
 model Game {
   id             String          @id @default(uuid())
@@ -84,7 +86,8 @@ model Game {
   thumbnailUrl   String?
   shareCode      String?         @unique
 
-  gameJson Json // ✅ Semua soal disimpan di sini
+  // ✅ Tempat menyimpan soal (words, cards, questions)
+  gameJson Json 
 
   creatorId String
   createdAt DateTime @default(now())
@@ -94,12 +97,11 @@ model Game {
   sessions    GameSession[]
   ltiContexts LtiContext[]
   
-  // ✅ Indexing untuk filter jenjang agar pencarian di dashboard cepat
   @@index([educationLevel, templateType]) 
   @@map("games")
 }
 
-// ─── GAME SESSION ─────────────────────────────────────────────────────
+// ─── SESSION & RESULTS ────────────────────────────────────────────────
 
 model GameSession {
   id          String    @id @default(uuid())
@@ -113,11 +115,9 @@ model GameSession {
   user   User   @relation(fields: [userId], references: [id])
   result Result?
 
-  @@index([userId, gameId]) // ✅ Indexing untuk histori user
+  @@index([userId, gameId])
   @@map("game_sessions")
 }
-
-// ─── RESULT ───────────────────────────────────────────────────────────
 
 model Result {
   id               String          @id @default(uuid())
@@ -138,7 +138,7 @@ model Result {
   @@map("results")
 }
 
-// ─── LTI / MOODLE ─────────────────────────────────────────────────────
+// ─── LTI INTEGRATION ──────────────────────────────────────────────────
 
 model LtiContext {
   id                String   @id @default(uuid())

@@ -1,116 +1,126 @@
 import { getGroqResponse } from "./providers/groq.provider";
 import { getGeminiResponse } from "./providers/gemini.provider";
-import { TemplateType } from "@prisma/client";
 
 /**
- * 🎯 REVISI: Prompt dinamis sesuai Template Type (Paten & Sinkron)
+ * 🎯 SYSTEM PROMPT: Otak dari WordIT AI
+ * Dirancang untuk mencegah typo, halusinasi, dan format ngawur.
  */
 const getSystemPrompt = (educationLevel: string, templateType: string): string => {
   let formatInstruction = "";
 
-  // Sesuaikan instruksi format berdasarkan tipe game
+  // 🛠️ DEFINISI STRUKTUR JSON BERDASARKAN GAME
   switch (templateType) {
     case "ANAGRAM":
     case "HANGMAN":
     case "WORD_SEARCH":
       formatInstruction = `
-      Struktur JSON (Array of Object):
       {
         "template": "${templateType}",
         "words": [
-          { "word": "KATA_JAWABAN", "hint": "Petunjuk terkait kata tersebut" }
+          { "word": "KATA_JAWABAN_ASLI", "hint": "Petunjuk mendalam dan edukatif" }
         ]
       }`;
       break;
     case "FLASHCARD":
       formatInstruction = `
-      Struktur JSON (Array of Object):
       {
         "template": "FLASHCARD",
         "cards": [
-          { "front": "Istilah/Pertanyaan", "back": "Definisi/Jawaban" }
+          { "front": "Istilah atau Pertanyaan Utama", "back": "Jawaban atau Penjelasan Detail" }
         ]
       }`;
       break;
-    default: // MAZE_CHASE & SPIN_THE_WHEEL
+    case "MAZE_CHASE":
+    case "SPIN_THE_WHEEL":
       formatInstruction = `
-      Struktur JSON (Array of Object):
       {
         "template": "${templateType}",
         "questions": [
-          { "question": "Pertanyaan kuis", "answer": "Jawaban benar" }
+          { "question": "Pertanyaan yang menantang", "answer": "Jawaban benar yang singkat dan padat" }
         ]
       }`;
+      break;
+    default:
+      formatInstruction = `{ "error": "Template tidak dikenal" }`;
   }
 
-  return `Anda adalah pakar pendidikan untuk jenjang ${educationLevel}.
-Tugas Anda adalah menghasilkan 5 soal kuis edukatif dalam Bahasa Indonesia untuk tipe game: ${templateType}.
+  return `Anda adalah pakar kurikulum pendidikan internasional untuk jenjang ${educationLevel}.
+Tugas: Hasilkan 5 soal kuis edukatif dalam Bahasa Indonesia untuk tipe game: ${templateType}.
 
-Ketentuan Khusus berdasarkan Jenjang:
-1. SD: Bahasa sederhana, ramah anak, contoh konkret.
-2. SMP/SMA: Bahasa formal-edukatif, tingkat kesulitan menengah.
-3. UNIVERSITY: Terminologi akademik lanjut dan analisis kritis.
+⚠️ ATURAN MUTLAK (DILARANG MELANGGAR):
+1. VALIDITAS DATA: Semua jawaban ('word', 'back', atau 'answer') HARUS berupa kata/istilah asli yang sah (Contoh: "FIREWALL", "INTEGRITAS").
+2. ANTI-HALUSINASI: DILARANG KERAS mengarang singkatan ngawur atau kata typo (Contoh salah: "TBAKC", "SOHMAI").
+3. FORMAT JAWABAN: Untuk Anagram/Hangman, berikan KATA ASLI, jangan memberikan kata yang sudah diacak hurufnya.
+4. KUALITAS MATERI: 
+   - SD: Gunakan bahasa ramah anak.
+   - UNIVERSITY: Gunakan terminologi akademik lanjut (seperti standar ISO, COBIT, atau framework profesional relevan).
+5. OUTPUT: Hanya kirimkan JSON valid tanpa teks penjelasan apa pun.
 
-WAJIB ikuti struktur JSON ini (HANYA JSON, jangan ada teks lain):
-${formatInstruction}
-
-Jawab HANYA JSON valid.`;
+WAJIB ikuti struktur JSON ini:
+${formatInstruction}`;
 };
 
-const getFeedbackPrompt = (): string => {
-  return `Berikan penjelasan maksimal 100 kata mengenai konsep jawaban yang benar.
-Gunakan nada bicara yang menyemangati siswa.
-Output JSON: { "feedback": "..." }
-
-Jawab HANYA JSON valid.`;
-};
-
+/**
+ * 🛠️ UTILS: Pembersih JSON
+ * Mencegah server crash jika AI mengirimkan Markdown (```json ... ```)
+ */
 const extractJSON = (text: string) => {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("JSON tidak ditemukan dalam response AI");
-  return JSON.parse(match[0]);
+  try {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("JSON tidak ditemukan");
+    return JSON.parse(match[0]);
+  } catch (err) {
+    console.error("🔥 Gagal parsing JSON dari AI:", err);
+    throw new Error("Response AI tidak valid");
+  }
 };
 
+/**
+ * 🚀 MAIN GENERATOR
+ */
 export const generateQuizContent = async (
   topic: string,
   educationLevel: string,
   templateType: string
 ) => {
   const systemPrompt = getSystemPrompt(educationLevel, templateType);
-  const userPrompt = `Topik/Materi Kuis: ${topic}`;
+  const userPrompt = `Topik: ${topic}. Buatlah konten kuis yang sangat berkualitas untuk jenjang ${educationLevel}.`;
 
   try {
+    // 1. Coba Pakai Groq (Utama)
     const result = await getGroqResponse(systemPrompt, userPrompt);
-    console.log("[AI System]: Menggunakan Groq (Utama) ✅");
-    return JSON.parse(result!);
+    console.log(`[AI System]: Groq Success ✅ (Template: ${templateType})`);
+    return extractJSON(result!);
   } catch (error) {
-    console.warn("[AI System]: Groq gagal, mengalihkan ke Gemini (Fallback)... 🔄");
+    console.warn("[AI System]: Groq gagal/limit, mencoba Gemini (Fallback)... 🔄");
     try {
+      // 2. Fallback ke Gemini
       const res = await getGeminiResponse(systemPrompt, userPrompt);
       return extractJSON(res);
     } catch (err) {
-      console.error("[AI System]: Seluruh provider gagal.");
-      throw err;
+      console.error("[AI System]: Seluruh AI Provider gagal.");
+      throw new Error("Gagal generate soal. Silakan coba lagi nanti.");
     }
   }
 };
 
+/**
+ * 📝 FEEDBACK GENERATOR
+ */
 export const generateFeedbackContent = async (
   questionText: string,
   correctAnswer: string
 ) => {
-  const systemPrompt = getFeedbackPrompt();
-  const userPrompt = `Pertanyaan: ${questionText}\nJawaban yang benar: ${correctAnswer}`;
+  const systemPrompt = `Berikan penjelasan edukatif maksimal 100 kata mengenai jawaban "${correctAnswer}". 
+Gunakan nada bicara yang menyemangati siswa. Jawab dalam format JSON: { "feedback": "..." }`;
+  
+  const userPrompt = `Pertanyaan: ${questionText}\nJawaban: ${correctAnswer}`;
 
   try {
     const result = await getGroqResponse(systemPrompt, userPrompt);
-    return JSON.parse(result!);
+    return extractJSON(result!);
   } catch (error) {
-    try {
-      const res = await getGeminiResponse(systemPrompt, userPrompt);
-      return extractJSON(res);
-    } catch (err) {
-      throw err;
-    }
+    const res = await getGeminiResponse(systemPrompt, userPrompt);
+    return extractJSON(res);
   }
 };

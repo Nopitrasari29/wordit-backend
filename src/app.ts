@@ -19,13 +19,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── GLOBAL REQUEST LOGGER (VERSI AMAN & ANTI-CRASH) ────────────────
+// ─── GLOBAL REQUEST LOGGER ──────────────────────────────────────────
 app.use((req, res, next) => {
   const time = new Date().toLocaleTimeString();
   console.log(`📡 [${time}] ${req.method} ${req.originalUrl}`);
   
-  // ✅ PERBAIKAN: Cek apakah req.body ada sebelum memanggil Object.keys
-  // Ini mencegah crash pada request GET atau LOGOUT yang body-nya kosong
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
     console.log("📦 Body:", JSON.stringify(req.body, null, 2));
   }
@@ -43,7 +41,7 @@ app.use("/api/ai", aiRoute);
 
 // Health Check Route
 app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "WordIT API is running!" });
+  res.json({ status: "ok", message: "WordIT API is running! 🚀" });
 });
 
 // ─── ERROR HANDLING ─────────────────────────────────────────────────
