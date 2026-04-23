@@ -1,30 +1,35 @@
-import { prisma } from "../../config/database";
+﻿import { prisma } from "../../config/database";
 import { hashPassword, comparePassword } from "../../utils/hash";
 import { generateToken } from "../../utils/jwt";
 import type { RegisterInput, LoginInput } from "./auth.schema";
-import { Role } from "@prisma/client"; // ✅ Import Role dari client
+import { Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 
 export const register = async (data: RegisterInput) => {
-  // 1. Cek email sudah ada atau belum
-  const existing = await prisma.user.findUnique({
-    where: { email: data.email },
-  });
-
-  if (existing) {
-    throw new Error("Email already registered");
+  // BE-NEW-03: Admin TIDAK BISA register via endpoint
+  if ((data.role as string) === "ADMIN") {
+    throw new Error("Registrasi sebagai Admin tidak diizinkan.");
   }
 
-  // 2. Hash password
+  // Cek email sudah ada atau belum
+  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+  if (existing) throw new Error("Email already registered");
+
   const hashedPassword = await hashPassword(data.password);
 
-  // 3. Buat user + profile sekaligus (Wajib ada profile untuk skema baru)
-  // ✅ REVISI: Menggunakan Role (enum) dan membuat UserProfile dalam satu transaction
+  // BE-NEW-01: Teacher -> PENDING, Student -> APPROVED
+  const approvalStatus: ApprovalStatus =
+    data.role === "TEACHER" ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED;
+
   const user = await prisma.user.create({
     data: {
       name: data.name,
       email: data.email,
       password: hashedPassword,
-      role: data.role as Role, // ✅ Casting ke Enum Role
+      role: data.role as Role,
+      approvalStatus,
+      educationLevel: data.educationLevel
+        ? (data.educationLevel as EducationLevel)
+        : undefined,
       profile: {
         create: {
           bio: "Halo, saya pengguna baru WordIT!",
@@ -38,42 +43,47 @@ export const register = async (data: RegisterInput) => {
       name: true,
       email: true,
       role: true,
+      approvalStatus: true,
+      educationLevel: true,
       createdAt: true,
     },
   });
 
-  // 4. Generate token
-  const token = generateToken({
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  });
+  // Teacher PENDING tidak boleh langsung dapat token
+  if (user.approvalStatus === ApprovalStatus.PENDING) {
+    return {
+      user,
+      token: null,
+      message:
+        "Registrasi berhasil! Akun Teacher kamu menunggu persetujuan Admin sebelum bisa login.",
+    };
+  }
 
+  const token = generateToken({ userId: user.id, email: data.email, role: user.role });
   return { user, token };
 };
 
 export const login = async (data: LoginInput) => {
-  // 1. Cari user by email
-  const user = await prisma.user.findUnique({
-    where: { email: data.email },
-  });
+  const user = await prisma.user.findUnique({ where: { email: data.email } });
+  if (!user) throw new Error("Invalid email or password");
 
-  if (!user) {
-    throw new Error("Invalid email or password");
-  }
-
-  // 2. Cek password
   const isMatch = await comparePassword(data.password, user.password);
-  if (!isMatch) {
-    throw new Error("Invalid email or password");
+  if (!isMatch) throw new Error("Invalid email or password");
+
+  // BE-NEW-01: Blokir login jika Teacher belum di-approve
+  if (user.role === Role.TEACHER && user.approvalStatus === ApprovalStatus.PENDING) {
+    throw new Error(
+      "Akun kamu masih menunggu persetujuan Admin. Mohon tunggu konfirmasi melalui email."
+    );
   }
 
-  // 3. Generate token
-  const token = generateToken({
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  });
+  if (user.role === Role.TEACHER && user.approvalStatus === ApprovalStatus.REJECTED) {
+    throw new Error(
+      "Akun kamu ditolak oleh Admin. Hubungi administrator untuk informasi lebih lanjut."
+    );
+  }
+
+  const token = generateToken({ userId: user.id, email: user.email, role: user.role });
 
   return {
     user: {
@@ -81,21 +91,15 @@ export const login = async (data: LoginInput) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      approvalStatus: user.approvalStatus,
+      educationLevel: user.educationLevel,
     },
     token,
   };
 };
 
 export const logout = async (userId: string) => {
-  // 1. Cek user exist
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  // 2. JWT stateless — client yang hapus token
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
   return { message: "Logged out successfully" };
 };

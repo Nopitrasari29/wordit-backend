@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+﻿import type { Request, Response, NextFunction } from "express";
 import { EducationLevel } from "@prisma/client";
 import { createGameSchema, updateGameSchema, gameQuerySchema } from "./game.schema";
 import * as gameService from "./game.service";
@@ -12,7 +12,7 @@ const getUserId = (req: Request): string | undefined => {
   return (req as AuthenticatedRequest).user?.userId;
 };
 
-// ─── CRUD GAMES ─────────────────────────────────────────────────────
+// â”€â”€â”€ CRUD GAMES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const getGames = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -45,14 +45,14 @@ export const getGameById = async (req: Request, res: Response, next: NextFunctio
 };
 
 /**
- * 🚀 FIXED: Mencari Game berdasarkan Share Code (Untuk Student Join)
+ * ðŸš€ FIXED: Mencari Game berdasarkan Share Code (Untuk Student Join)
  */
 export const getGameByCode = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // Paksa cast ke string untuk menghindari error Property 'toUpperCase' does not exist
     const shareCode = req.params.shareCode as string; 
     
-    console.log(`🔍 [JOIN] Student searching for code: ${shareCode}`);
+    console.log(`ðŸ” [JOIN] Student searching for code: ${shareCode}`);
 
     if (!shareCode) {
       res.status(400).json(errorResponse("Share Code wajib diisi"));
@@ -63,12 +63,12 @@ export const getGameByCode = async (req: Request, res: Response, next: NextFunct
     const result = await gameService.getGameByCode(shareCode.toUpperCase());
     
     if (!result) {
-      console.warn(`⚠️ [JOIN] Code ${shareCode} not found in DB`);
+      console.warn(`âš ï¸ [JOIN] Code ${shareCode} not found in DB`);
       res.status(404).json(errorResponse("Game tidak ditemukan! Cek kembali kodenya."));
       return;
     }
 
-    console.log(`✅ [JOIN] Code ${shareCode} matched with Game: ${result.title}`);
+    console.log(`âœ… [JOIN] Code ${shareCode} matched with Game: ${result.title}`);
     res.status(200).json(successResponse(result, "Game ditemukan"));
   } catch (error: unknown) {
     next(error);
@@ -174,7 +174,7 @@ export const getTemplatesByLevel = async (req: Request, res: Response, next: Nex
   }
 };
 
-// ─── GAME PLAYER ENGINE ─────────────────────────────────────────────
+// â”€â”€â”€ GAME PLAYER ENGINE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const playGame = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -185,7 +185,7 @@ export const playGame = async (req: Request, res: Response, next: NextFunction) 
     }
 
     const id = req.params.id as string;
-    console.log(`🎮 User ${userId} starting game session for: ${id}`);
+    console.log(`ðŸŽ® User ${userId} starting game session for: ${id}`);
     
     const session = await gameService.startGame(id, userId as string);
     res.status(200).json(successResponse(session, "Sesi game dimulai"));
@@ -203,15 +203,45 @@ export const submitAnswer = async (req: Request, res: Response, next: NextFuncti
     }
 
     const id = req.params.id as string;
-    const { questionIndex, selectedAnswer } = req.body;
+    const { questionIndex, selectedAnswer, earnedPoints } = req.body;
+    
+    console.log(`[SUBMIT_ANSWER] req.body:`, req.body);
     
     const result = await gameService.submitAnswer(
       id, 
       userId as string, 
       questionIndex, 
-      selectedAnswer
+      selectedAnswer,
+      undefined,
+      earnedPoints
     );
     res.status(200).json(successResponse(result, "Jawaban berhasil dikirim"));
+  } catch (error: any) {
+    res.status(500).json(errorResponse(error.message));
+  }
+};
+export const finishGame = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      res.status(401).json(errorResponse("Unauthorized"));
+      return;
+    }
+
+    const id = req.params.id as string;
+    const { scoreValue, maxScore, accuracy, timeSpent, answersDetail } = req.body;
+
+    console.log(`[FINISH_GAME] User ${userId} finishing game ${id}, score: ${scoreValue}`);
+
+    const result = await gameService.finishGame(id, userId as string, {
+      scoreValue: scoreValue ?? 0,
+      maxScore: maxScore ?? 0,
+      accuracy: accuracy ?? 0,
+      timeSpent: timeSpent ?? 0,
+      answersDetail: answersDetail ?? [],
+    });
+
+    res.status(200).json(successResponse(result, "Skor berhasil disimpan!"));
   } catch (error: any) {
     res.status(500).json(errorResponse(error.message));
   }
