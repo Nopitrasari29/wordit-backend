@@ -1,3 +1,7 @@
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
@@ -7,12 +11,20 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── ENUMS ───────────────────────────────────────────────────────────
+// ============================================================
+// ENUMS
+// ============================================================
 
 enum Role {
   STUDENT
   TEACHER
   ADMIN
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum EducationLevel {
@@ -37,17 +49,21 @@ enum DifficultyLevel {
   HARD
 }
 
-// ─── USER ────────────────────────────────────────────────────────────
+// ============================================================
+// USER MODELS
+// ============================================================
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(STUDENT)
-  photoUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String          @id @default(uuid())
+  name           String
+  email          String          @unique
+  password       String
+  role           Role            @default(STUDENT)
+  approvalStatus ApprovalStatus  @default(APPROVED)
+  educationLevel EducationLevel?
+  photoUrl       String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   profile      UserProfile?
   gamesCreated Game[]        @relation("GameCreator")
@@ -61,7 +77,7 @@ model UserProfile {
   userId      String   @unique
   bio         String?
   totalPoints Int      @default(0)
-  badges      Json     @default("[]") // Simpan array badges
+  badges      Json     @default("[]")
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -69,11 +85,13 @@ model UserProfile {
   @@map("user_profiles")
 }
 
-// ─── GAME ─────────────────────────────────────────────────────────────
+// ============================================================
+// GAME MODELS
+// ============================================================
 
 model Game {
   id             String          @id @default(uuid())
-  title          String          @unique 
+  title          String          @unique
   description    String?
   templateType   TemplateType
   educationLevel EducationLevel
@@ -84,7 +102,8 @@ model Game {
   thumbnailUrl   String?
   shareCode      String?         @unique
 
-  gameJson Json // ✅ Semua soal disimpan di sini
+  // Tempat menyimpan soal (words, cards, questions)
+  gameJson Json
 
   creatorId String
   createdAt DateTime @default(now())
@@ -93,13 +112,14 @@ model Game {
   creator     User          @relation("GameCreator", fields: [creatorId], references: [id])
   sessions    GameSession[]
   ltiContexts LtiContext[]
-  
-  // ✅ Indexing untuk filter jenjang agar pencarian di dashboard cepat
-  @@index([educationLevel, templateType]) 
+
+  @@index([educationLevel, templateType])
   @@map("games")
 }
 
-// ─── GAME SESSION ─────────────────────────────────────────────────────
+// ============================================================
+// SESSION & RESULTS
+// ============================================================
 
 model GameSession {
   id          String    @id @default(uuid())
@@ -109,15 +129,13 @@ model GameSession {
   finishedAt  DateTime?
   isCompleted Boolean   @default(false)
 
-  game   Game   @relation(fields: [gameId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
+  game   Game    @relation(fields: [gameId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
   result Result?
 
-  @@index([userId, gameId]) // ✅ Indexing untuk histori user
+  @@index([userId, gameId])
   @@map("game_sessions")
 }
-
-// ─── RESULT ───────────────────────────────────────────────────────────
 
 model Result {
   id               String          @id @default(uuid())
@@ -138,7 +156,9 @@ model Result {
   @@map("results")
 }
 
-// ─── LTI / MOODLE ─────────────────────────────────────────────────────
+// ============================================================
+// LTI INTEGRATION
+// ============================================================
 
 model LtiContext {
   id                String   @id @default(uuid())

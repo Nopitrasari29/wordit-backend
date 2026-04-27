@@ -7,12 +7,16 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "24h",
   groqApiKey: process.env.GROQ_API_KEY || "",
   geminiApiKey: process.env.GEMINI_API_KEY || "",
+  
+  // 🚀 TAMBAHKAN INI (Satu Pintu)
+  databaseUrl: process.env.DATABASE_URL!,
+  redisHost: process.env.REDIS_HOST || "localhost",
 }
 
 // Validasi env wajib
 const required = ["JWT_SECRET", "DATABASE_URL"]
 for (const key of required) {
   if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}`)
+    throw new Error(`🔥 Missing required environment variable: ${key}`)
   }
 }

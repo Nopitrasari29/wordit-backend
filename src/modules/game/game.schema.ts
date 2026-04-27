@@ -1,47 +1,60 @@
-import { z } from "zod"
+import { z } from "zod";
+import { HangmanContentSchema } from "./hangman/hangman.schema";
+import { AnagramContentSchema } from "./anagram/anagram.schema";
+import { FlashcardContentSchema } from "./flashcard/flashcard.schema";
+import { MazeChaseContentSchema } from "./maze-chase/maze-chase.schema";
+import { WordSearchContentSchema } from "./word-search/word-search.schema";
+import { SpinTheWheelContentSchema } from "./spin-the-wheel/spin-the-wheel.schema";
 
-// ─── SHARED ENUMS ───────────────────────────────────────────────────
-// Kita definisikan di sini agar bisa dipakai ulang di create & query
-const TemplateTypeEnum = z.enum([
-  "ANAGRAM",
-  "FLASHCARD",
-  "HANGMAN",
-  "MAZE_CHASE",
-  "SPIN_THE_WHEEL",
-  "WORD_SEARCH",
-])
+// --- ENUMS ---
+// Enum ini disesuaikan dengan skema database Prisma
+export const TemplateTypeEnum = z.enum(["ANAGRAM", "FLASHCARD", "HANGMAN", "MAZE_CHASE", "SPIN_THE_WHEEL", "WORD_SEARCH"]);
+export const EducationLevelEnum = z.enum(["SD", "SMP", "SMA", "UNIVERSITY"]);
+export const DifficultyLevelEnum = z.enum(["EASY", "MEDIUM", "HARD"]);
 
-const EducationLevelEnum = z.enum(["SD", "SMP", "SMA", "UNIVERSITY"]); 
-const DifficultyLevelEnum = z.enum(["EASY", "MEDIUM", "HARD"]);
-// ─── SCHEMAS ────────────────────────────────────────────────────────
+// --- MERGED GAME JSON SCHEMA ---
+// Menggunakan discriminatedUnion agar Zod tahu skema mana yang dipakai berdasarkan field 'template'
+const GameJsonSchema = z.discriminatedUnion("template", [
+  FlashcardContentSchema,
+  HangmanContentSchema,
+  WordSearchContentSchema,
+  AnagramContentSchema,
+  MazeChaseContentSchema,
+  SpinTheWheelContentSchema,
+]);
 
+// --- CRUD SCHEMAS ---
 export const createGameSchema = z.object({
-  title: z.string().min(3, "Judul minimal 3 karakter"),
-  description: z.string().max(255, "Deskripsi terlalu panjang").optional(),
-  templateType: TemplateTypeEnum, // ✅ Menggunakan 6 template Golden Six
+  title: z.string().min(3, "Judul kuis minimal 3 karakter"),
+  description: z.string().max(255).optional(),
+  templateType: TemplateTypeEnum,
   educationLevel: EducationLevelEnum,
   difficulty: DifficultyLevelEnum.default("MEDIUM"),
-  
-  // gameJson divalidasi sebagai object fleksibel sesuai kebutuhan template
-  gameJson: z.record(z.string(), z.unknown()).refine((data) => Object.keys(data).length > 0, {
-    message: "Konten game (soal) tidak boleh kosong",
-  }),
-})
+  thumbnailUrl: z.string().optional(),
+  // ✅ Penambahan field ini memperbaiki error 'Property does not exist' di game.service.ts
+  isPublished: z.boolean().default(false).optional(),
+  gameJson: GameJsonSchema,
+}).passthrough(); // ✅ Mengizinkan field tambahan dari FE agar tidak memicu 400 Bad Request
 
-// Update schema adalah versi parsial dari create schema
-export const updateGameSchema = createGameSchema.partial()
+export const updateGameSchema = createGameSchema.partial();
 
-// Schema untuk validasi filter/query di URL
 export const gameQuerySchema = z.object({
   educationLevel: EducationLevelEnum.optional(),
-  templateType: TemplateTypeEnum.optional(), // ✅ Sekarang tervalidasi ketat
+  templateType: TemplateTypeEnum.optional(),
   search: z.string().optional(),
   page: z.string().default("1"),
-  limit: z.string().default("12"),
-})
+  limit: z.string().default("10"),
+});
 
-// ─── TYPES ──────────────────────────────────────────────────────────
+// --- SPRINT 2: SUBMIT ANSWER SCHEMA ---
+export const submitAnswerSchema = z.object({
+  answers: z.array(z.any()).optional(),
+  timeSpent: z.number().min(0),
+  accuracy: z.number().min(0).max(100),
+  questionIndex: z.number().optional(),
+  selectedAnswer: z.any().optional(),
+});
 
-export type CreateGameInput = z.infer<typeof createGameSchema>
-export type UpdateGameInput = z.infer<typeof updateGameSchema>
-export type GameQueryInput = z.infer<typeof gameQuerySchema>
+export type CreateGameInput = z.infer<typeof createGameSchema>;
+export type UpdateGameInput = z.infer<typeof updateGameSchema>;
+export type GameQueryInput = z.infer<typeof gameQuerySchema>;

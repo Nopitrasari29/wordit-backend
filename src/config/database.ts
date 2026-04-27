@@ -1,10 +1,10 @@
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
-import "dotenv/config"
+import { env } from "./env" // 👈 Ambil dari env.ts
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: env.databaseUrl, // 👈 Pakai env.databaseUrl
 })
 
 const adapter = new PrismaPg(pool)
@@ -20,6 +20,6 @@ export const prisma =
     log: ["error", "warn"],
   })
 
-if (process.env.NODE_ENV !== "production") {
+if (env.nodeEnv !== "production") {
   globalForPrisma.prisma = prisma
 }

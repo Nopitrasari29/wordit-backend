@@ -3,8 +3,8 @@ import { getGeminiResponse } from "./providers/gemini.provider";
 import { generateAnagram } from "./anagram.service";
 
 /**
- * SYSTEM PROMPT 
- * Digunakan untuk menghasilkan instruksi AI berdasarkan tingkat pendidikan dan jenis template kuis.
+ * SYSTEM PROMPT GENERATOR
+ * Menghasilkan instruksi AI berdasarkan level pendidikan dan tipe game.
  */
 const getSystemPrompt = (educationLevel: string, templateType: string): string => {
   let formatInstruction = "";
@@ -32,7 +32,6 @@ const getSystemPrompt = (educationLevel: string, templateType: string): string =
 }`;
       break;
 
-    // Struktur tambahan untuk mode permainan berbasis pertanyaan
     case "MAZE_CHASE":
     case "SPIN_THE_WHEEL":
       formatInstruction = `
@@ -53,33 +52,39 @@ Anda adalah pakar kurikulum pendidikan internasional untuk jenjang ${educationLe
 
 Tugas: Hasilkan soal kuis edukatif dalam Bahasa Indonesia untuk tipe game: ${templateType}.
 
-⚠️ ATURAN MUTLAK (DILARANG MELANGGAR):
-1. VALIDITAS DATA: Semua jawaban HARUS kata/istilah asli yang sah (contoh: "FIREWALL", "INTEGRITAS").
-2. ANTI-HALUSINASI: Dilarang mengarang kata atau typo.
-3. FORMAT JAWABAN: Untuk Anagram/Hangman gunakan kata asli, bukan hasil acakan.
-4. KUALITAS MATERI:
-   - SD: bahasa ramah anak
-   - UNIVERSITY: istilah akademik profesional
-5. OUTPUT: Hanya JSON tanpa teks tambahan
+⚠️ ATURAN MUTLAK:
+1. Jawaban harus kata/istilah asli (contoh: FIREWALL, INTEGRITAS)
+2. Dilarang mengarang kata atau typo
+3. Untuk Anagram/Hangman gunakan kata asli
+4. SD: bahasa sederhana, UNIVERSITY: akademik
+5. Output hanya JSON
 
-WAJIB ikuti struktur JSON ini:
+WAJIB ikuti struktur:
 ${formatInstruction}
 `;
 };
 
 /**
  * JSON PARSER SAFETY
- * Berfungsi untuk mengekstrak JSON dari respons AI dan menghindari error akibat format tambahan.
  */
 const extractJSON = (text: string) => {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("JSON tidak ditemukan");
-  return JSON.parse(match[0]);
+  try {
+    const cleaned = text
+      .replace(/```json/g, "")
+      .replace(/```/g, "");
+
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("JSON tidak ditemukan");
+
+    return JSON.parse(match[0]);
+  } catch (err) {
+    console.error("JSON parse error:", err);
+    throw new Error("Response AI tidak valid");
+  }
 };
 
 /**
  * MAIN GENERATOR (HYBRID SYSTEM)
- * Mengatur alur utama pembuatan soal dengan fallback Groq → Gemini.
  */
 export const generateQuizContent = async (
   topic: string,
@@ -90,7 +95,7 @@ export const generateQuizContent = async (
 
   console.log(`[AI] Request -> ${templateType} | ${educationLevel} | ${count}`);
 
-  // Menggunakan service khusus untuk mode ANAGRAM
+  // ANAGRAM pakai service khusus
   if (templateType === "ANAGRAM") {
     return generateAnagram(topic, educationLevel, count);
   }
@@ -109,23 +114,28 @@ export const generateQuizContent = async (
 };
 
 /**
- * FEEDBACK GENERATOR
- * Menghasilkan penjelasan jawaban dalam format JSON.
+ * FEEDBACK GENERATOR 
  */
 export const generateFeedbackContent = async (
   questionText: string,
   correctAnswer: string
 ) => {
-  const systemPrompt = `Berikan penjelasan edukatif maksimal 100 kata mengenai jawaban "${correctAnswer}". 
-Gunakan nada bicara yang menyemangati siswa. Jawab dalam format JSON: { "feedback": "..." }`;
-  
-  const userPrompt = `Pertanyaan: ${questionText}\nJawaban: ${correctAnswer}`;
+  const systemPrompt = `
+Berikan penjelasan edukatif dan penuh semangat maksimal 100 kata dalam JSON:
+{ "feedback": "..." }
+`;
+
+  const userPrompt = `
+Pertanyaan: ${questionText}
+Jawaban: ${correctAnswer}
+`;
 
   try {
-    const result = await getGroqResponse(systemPrompt, userPrompt);
-    return extractJSON(result!);
-  } catch (error) {
+    const res = await getGroqResponse(systemPrompt, userPrompt);
+    return extractJSON(res || "");
+  } catch (err) {
+    console.error(err);
     const res = await getGeminiResponse(systemPrompt, userPrompt);
-    return extractJSON(res);
+    return extractJSON(res || "");
   }
 };
