@@ -1,20 +1,15 @@
 import type { Request, Response } from "express";
-import {
-  generateQuizContent,
-  generateFeedbackContent,
-} from "./ai.service";
+import { generateQuizContent, generateFeedbackContent } from "./ai.service";
 
-/**
- * Generate Quiz Controller
- */
 export const generateQuiz = async (req: Request, res: Response) => {
   try {
-    const { topic, educationLevel, templateType } = req.body;
+    const { topic, educationLevel, templateType, count } = req.body;
 
     const quizData = await generateQuizContent(
       topic,
       educationLevel,
-      templateType
+      templateType,
+      count || 5 // Default ke 5 jika Frontend lupa mengirimkan count
     );
 
     return res.status(200).json({
@@ -29,18 +24,10 @@ export const generateQuiz = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * AI Feedback Controller
- */
 export const getAIFeedback = async (req: Request, res: Response) => {
   try {
     const { questionText, correctAnswer } = req.body;
-
-    const feedbackData = await generateFeedbackContent(
-      questionText,
-      correctAnswer
-    );
-
+    const feedbackData = await generateFeedbackContent(questionText, correctAnswer);
     return res.status(200).json({
       success: true,
       data: feedbackData,
