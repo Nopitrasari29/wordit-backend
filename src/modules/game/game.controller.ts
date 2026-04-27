@@ -33,7 +33,8 @@ export const getGameById = async (req: Request, res: Response, next: NextFunctio
     const id = req.params.id as string;
     if (!id) throw new Error("Game ID is required");
     
-    const result = await gameService.getGameById(id);
+    const userId = getUserId(req);
+    const result = await gameService.getGameById(id, userId);
     if (!result) {
       res.status(404).json(errorResponse("Game not found"));
       return;
