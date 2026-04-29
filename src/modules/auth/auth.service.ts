@@ -3,6 +3,8 @@ import { hashPassword, comparePassword } from "../../utils/hash";
 import { generateToken } from "../../utils/jwt";
 import type { RegisterInput, LoginInput } from "./auth.schema";
 import { Role, ApprovalStatus, EducationLevel } from "@prisma/client";
+import { sendApprovalRequestToTele } from "../../utils/telegram.service"; // ✅ IMPORT BOT TELEGRAM
+import { getIO } from "../../socket"; // ✅ IMPORT SOCKET.IO UNTUK NOTIF ADMIN WEB
 
 export const register = async (data: RegisterInput) => {
   // BE-NEW-03: Admin TIDAK BISA register via endpoint
@@ -48,6 +50,36 @@ export const register = async (data: RegisterInput) => {
       createdAt: true,
     },
   });
+
+  // =========================================================
+  // 🚀 TRIGGER TELEGRAM BOT & WEB NOTIF (JIKA ROLE TEACHER)
+  // =========================================================
+  if (user.role === Role.TEACHER) {
+    // 1. Kirim notif ke Telegram
+    sendApprovalRequestToTele({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      educationLevel: user.educationLevel,
+    }).catch(err => console.error("Gagal trigger bot Telegram:", err));
+
+    // 2. Kirim notif Real-time ke Dashboard Admin via Socket (BE-20)
+    try {
+      const io = getIO();
+      // Mengirim event "new_registration" ke room "admin"
+      io.to("admin").emit("new_registration", {
+        message: `👨‍🏫 Guru baru mendaftar: ${user.name}`,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email
+        }
+      });
+      console.log(`📡 Socket emit: Notifikasi pendaftaran ${user.name} terkirim ke web Admin.`);
+    } catch (err) {
+      console.error("❌ Gagal emit socket notif admin:", err);
+    }
+  }
 
   // Teacher PENDING tidak boleh langsung dapat token
   if (user.approvalStatus === ApprovalStatus.PENDING) {

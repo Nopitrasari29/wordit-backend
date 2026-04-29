@@ -6,9 +6,32 @@ import { MazeChaseContentSchema } from "./maze-chase/maze-chase.schema";
 import { WordSearchContentSchema } from "./word-search/word-search.schema";
 import { SpinTheWheelContentSchema } from "./spin-the-wheel/spin-the-wheel.schema";
 
+// ============================================================
+// SPRINT 3: STANDARD ASSESSMENT SCHEMAS (NEW)
+// ============================================================
+
+import { MultipleChoiceContentSchema } from "./multiple-choice/multiple-choice.schema";
+import { TrueFalseContentSchema } from "./true-false/true-false.schema";
+import { MatchingContentSchema } from "./matching/matching.schema";
+import { EssayContentSchema } from "./essay/essay.schema";
+
+export { 
+  MultipleChoiceContentSchema, 
+  TrueFalseContentSchema, 
+  MatchingContentSchema, 
+  EssayContentSchema 
+};
+
+
+
+
 // --- ENUMS ---
 // Enum ini disesuaikan dengan skema database Prisma
-export const TemplateTypeEnum = z.enum(["ANAGRAM", "FLASHCARD", "HANGMAN", "MAZE_CHASE", "SPIN_THE_WHEEL", "WORD_SEARCH"]);
+export const TemplateTypeEnum = z.enum([
+  "ANAGRAM", "FLASHCARD", "HANGMAN", "MAZE_CHASE", "SPIN_THE_WHEEL", "WORD_SEARCH",
+  // ✅ Penambahan 4 Template Baru
+  "MULTIPLE_CHOICE", "TRUE_FALSE", "MATCHING", "ESSAY"
+]);
 export const EducationLevelEnum = z.enum(["SD", "SMP", "SMA", "UNIVERSITY"]);
 export const DifficultyLevelEnum = z.enum(["EASY", "MEDIUM", "HARD"]);
 
@@ -21,6 +44,11 @@ const GameJsonSchema = z.discriminatedUnion("template", [
   AnagramContentSchema,
   MazeChaseContentSchema,
   SpinTheWheelContentSchema,
+  // ✅ Penambahan 4 Schema Baru ke dalam Union
+  MultipleChoiceContentSchema,
+  TrueFalseContentSchema,
+  MatchingContentSchema,
+  EssayContentSchema,
 ]);
 
 // --- CRUD SCHEMAS ---
@@ -49,11 +77,13 @@ export const gameQuerySchema = z.object({
 // --- SPRINT 2: SUBMIT ANSWER SCHEMA ---
 export const submitAnswerSchema = z.object({
   answers: z.array(z.any()).optional(),
-  timeSpent: z.number().min(0),
-  accuracy: z.number().min(0).max(100),
-  questionIndex: z.number().optional(),
-  selectedAnswer: z.any().optional(),
+  timeSpent: z.number().min(0).optional(),
+  accuracy: z.number().min(0).max(100).optional(),
+  questionIndex: z.number(),
+  selectedAnswer: z.any(),
+  earnedPoints: z.number().optional(),
 });
+
 
 export type CreateGameInput = z.infer<typeof createGameSchema>;
 export type UpdateGameInput = z.infer<typeof updateGameSchema>;

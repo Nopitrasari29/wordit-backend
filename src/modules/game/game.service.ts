@@ -1,17 +1,26 @@
-﻿import { prisma } from "../../config/database";
+import { prisma } from "../../config/database";
 import { Prisma, EducationLevel, TemplateType } from "@prisma/client";
 import type { CreateGameInput, UpdateGameInput, GameQueryInput } from "./game.schema";
 import { generateShareCode } from "../../utils/share-code";
 import { redis } from "../../config/redis";
 import { getIO } from "../../socket";
+import { getAdaptiveDifficulty } from "../analytics/analytics.service";
 
-// ═══════════════ IMPORT SEMUA GAME ENGINE (THE GOLDEN SIX) ═══════════════
+// ═══════════════ IMPORT SEMUA GAME ENGINE ═══════════════
 import { AnagramService } from "./anagram/anagram.service";
 import { FlashcardService } from "./flashcard/flashcard.service";
 import { HangmanService } from "./hangman/hangman.service";
 import { WordSearchService } from "./word-search/word-search.service";
 import { MazeChaseService } from "./maze-chase/maze-chase.service";
 import { SpinTheWheelService } from "./spin-the-wheel/spin-the-wheel.service";
+
+// ═══════════════ IMPORT NEW STANDARD ASSESSMENTS ═══════════════
+import { MultipleChoiceService } from "./multiple-choice/multiple-choice.service";
+import { TrueFalseService } from "./true-false/true-false.service";
+import { MatchingService } from "./matching/matching.service";
+import { EssayService } from "./essay/essay.service";
+import { SmartGradingService } from "../ai/smart-grading.service";
+
 
 // ═══════════════ CRUD GAMES (TEACHER & EXPLORE) ═══════════════
 
@@ -145,7 +154,10 @@ export const startGame = async (gameId: string, userId: string) => {
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game || !game.isPublished) throw new Error("Game tidak tersedia");
 
-  // Cek apakah sudah ada sesi aktif untuk user+game ini, jika ada pakai yang itu
+  // 🧠 PANGGIL LOGIKA ADAPTIVE DIFFICULTY
+  const recommendedDifficulty = await getAdaptiveDifficulty(userId);
+  console.log(`🧠 Adaptive Difficulty untuk User ${userId}: Direkomendasikan level ${recommendedDifficulty}`);
+
   const existingSession = await prisma.gameSession.findFirst({
     where: { gameId, userId, isCompleted: false },
     orderBy: { startedAt: "desc" },
@@ -153,7 +165,7 @@ export const startGame = async (gameId: string, userId: string) => {
 
   if (existingSession) {
     console.log(`♻️  Reusing existing session: ${existingSession.id}`);
-    return existingSession;
+    return { ...existingSession, recommendedDifficulty };
   }
 
   const session = await prisma.gameSession.create({
@@ -165,12 +177,11 @@ export const startGame = async (gameId: string, userId: string) => {
     data: { playCount: { increment: 1 } },
   });
 
-  return session;
+  return { ...session, recommendedDifficulty };
 };
 
 /**
- * submitAnswer: Update skor real-time via Redis + Socket saja.
- * TIDAK menyimpan ke tabel Result (karena sessionId adalah UNIQUE, 1 sesi = 1 result).
+ * submitAnswer: Update skor real-time via Redis + Socket.
  */
 export const submitAnswer = async (
   gameId: string,
@@ -211,6 +222,20 @@ export const submitAnswer = async (
     case TemplateType.SPIN_THE_WHEEL:
       isCorrect = SpinTheWheelService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
+
+    // ✅ NEW STANDARD ASSESSMENT INTEGRATION
+    case TemplateType.MULTIPLE_CHOICE:
+      isCorrect = MultipleChoiceService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      break;
+    case TemplateType.TRUE_FALSE:
+      isCorrect = TrueFalseService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      break;
+    case TemplateType.MATCHING:
+      isCorrect = MatchingService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      break;
+    case TemplateType.ESSAY:
+      isCorrect = EssayService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      break;
     default:
       isCorrect = false;
   }
@@ -245,8 +270,7 @@ export const submitAnswer = async (
 };
 
 /**
- * finishGame: Dipanggil saat siswa menyelesaikan semua soal.
- * Menyimpan SKOR FINAL ke tabel Result (1x per sesi) + menutup sesi.
+ * finishGame: Simpan SKOR FINAL ke tabel Result (1x per sesi) + tutup sesi.
  */
 export const finishGame = async (
   gameId: string,
@@ -264,12 +288,80 @@ export const finishGame = async (
     orderBy: { startedAt: "desc" },
   });
 
-  if (!session) {
-    // Jika tidak ada sesi aktif, buat satu baru dan langsung selesaikan
-    console.warn(`⚠️ No active session found for user ${userId} game ${gameId}. Creating one.`);
-    const game = await prisma.game.findUnique({ where: { id: gameId } });
-    if (!game) throw new Error("Game tidak ditemukan");
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game) throw new Error("Game tidak ditemukan");
 
+  // =========================================================================
+  // 🤖 AUTO-GRADER INTERCEPTOR (ANTI-CHEAT)
+  // Kalkulasi ulang menggunakan service masing-masing agar aman dari manipulasi FE
+  // =========================================================================
+  let finalScore = payload.scoreValue;
+  let finalAccuracy = payload.accuracy;
+  const maxPossibleScore = payload.maxScore > 0 ? payload.maxScore : 100;
+  const content = game.gameJson as any;
+
+  let totalQuestions = 0;
+  let correctAnswers = 0;
+
+  let aiGradingResult: any = null;
+
+  if (game.templateType === TemplateType.MULTIPLE_CHOICE) {
+    totalQuestions = content.questions?.length || 0;
+    correctAnswers = payload.answersDetail.filter((ans: any) =>
+      MultipleChoiceService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer)
+    ).length;
+    finalAccuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+    finalScore = MultipleChoiceService.calculateScore({ ...payload, accuracy: finalAccuracy }, content);
+  }
+  else if (game.templateType === TemplateType.TRUE_FALSE) {
+    totalQuestions = content.questions?.length || 0;
+    correctAnswers = payload.answersDetail.filter((ans: any) =>
+      TrueFalseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer)
+    ).length;
+    finalAccuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+    finalScore = TrueFalseService.calculateScore({ ...payload, accuracy: finalAccuracy }, content);
+  }
+  else if (game.templateType === TemplateType.MATCHING) {
+    totalQuestions = content.pairs?.length || 0;
+    correctAnswers = payload.answersDetail.filter((ans: any) =>
+      MatchingService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer)
+    ).length;
+    finalAccuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+    finalScore = MatchingService.calculateScore({ ...payload, accuracy: finalAccuracy, answers: payload.answersDetail.map(ans => ({ ...ans, isCorrect: MatchingService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer) })) }, content);
+  }
+  else if (game.templateType === TemplateType.ESSAY) {
+    totalQuestions = content.questions?.length || 0;
+    const gradingResults = [];
+    let totalAiScore = 0;
+
+    for (const ans of payload.answersDetail) {
+      const questionObj = content.questions[ans.questionIndex];
+      if (questionObj) {
+        const result = await SmartGradingService.gradeEssay(
+          questionObj.question,
+          questionObj.keywords,
+          ans.selectedAnswer
+        );
+        gradingResults.push({
+          questionIndex: ans.questionIndex,
+          question: questionObj.question,
+          answer: ans.selectedAnswer,
+          score: result.score,
+          justification: result.justification
+        });
+        totalAiScore += result.score;
+      }
+    }
+
+    finalScore = totalQuestions > 0 ? Math.round(totalAiScore / totalQuestions) : 0;
+    finalAccuracy = finalScore; // Untuk essay, akurasi disamakan dengan skor rata-rata
+    aiGradingResult = gradingResults;
+  }
+
+
+  // Jika tidak ada sesi aktif, buat satu baru dan langsung selesaikan
+  if (!session) {
+    console.warn(`⚠️ No active session found for user ${userId} game ${gameId}. Creating one.`);
     const newSession = await prisma.gameSession.create({
       data: { gameId, userId, isCompleted: true, finishedAt: new Date() },
     });
@@ -277,51 +369,49 @@ export const finishGame = async (
     const result = await prisma.result.create({
       data: {
         sessionId: newSession.id,
-        scoreValue: payload.scoreValue,
-        maxScore: payload.maxScore,
-        accuracy: payload.accuracy,
+        scoreValue: Math.round(finalScore),
+        maxScore: maxPossibleScore,
+        accuracy: finalAccuracy,
         timeSpent: payload.timeSpent,
         difficultyPlayed: game.difficulty,
         answersDetail: payload.answersDetail as Prisma.InputJsonValue,
+        aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
       },
     });
 
     return { session: newSession, result };
+
   }
 
-  const game = await prisma.game.findUnique({ where: { id: gameId } });
-  if (!game) throw new Error("Game tidak ditemukan");
-
-  // Cek apakah result sudah pernah dibuat untuk sesi ini (idempoten)
+  // Cek idempoten
   const existingResult = await prisma.result.findUnique({
     where: { sessionId: session.id },
   });
 
   if (existingResult) {
-    console.log(`ℹ️  Result already exists for session ${session.id}, skipping.`);
     return { session, result: existingResult };
   }
 
-  // Tutup sesi
   const closedSession = await prisma.gameSession.update({
     where: { id: session.id },
     data: { isCompleted: true, finishedAt: new Date() },
   });
 
-  // Simpan skor final ke Result (1x per sesi!)
   const result = await prisma.result.create({
     data: {
       sessionId: session.id,
-      scoreValue: payload.scoreValue,
-      maxScore: payload.maxScore,
-      accuracy: payload.accuracy,
+      scoreValue: Math.round(finalScore),
+      maxScore: maxPossibleScore,
+      accuracy: finalAccuracy,
       timeSpent: payload.timeSpent,
       difficultyPlayed: game.difficulty,
       answersDetail: payload.answersDetail as Prisma.InputJsonValue,
+      aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
     },
   });
 
-  console.log(`✅ Game finished: User ${userId}, Score ${payload.scoreValue}, Accuracy ${payload.accuracy}%`);
+
+  console.log(`✅ Game finished: User ${userId}, Validated Score ${Math.round(finalScore)}, Accuracy ${finalAccuracy}%`);
   return { session: closedSession, result };
 };
 
@@ -329,10 +419,24 @@ export const finishGame = async (
 
 export const getTemplatesByLevel = async (educationLevel: EducationLevel) => {
   const templateMapping: Record<EducationLevel, TemplateType[]> = {
-    SD: [TemplateType.FLASHCARD, TemplateType.HANGMAN, TemplateType.WORD_SEARCH, TemplateType.ANAGRAM, TemplateType.MAZE_CHASE],
-    SMP: [TemplateType.FLASHCARD, TemplateType.HANGMAN, TemplateType.WORD_SEARCH, TemplateType.ANAGRAM, TemplateType.MAZE_CHASE],
-    SMA: [TemplateType.FLASHCARD, TemplateType.ANAGRAM, TemplateType.SPIN_THE_WHEEL],
-    UNIVERSITY: [TemplateType.FLASHCARD, TemplateType.ANAGRAM, TemplateType.SPIN_THE_WHEEL],
+    SD: [
+      TemplateType.FLASHCARD, TemplateType.HANGMAN, TemplateType.WORD_SEARCH,
+      TemplateType.ANAGRAM, TemplateType.MAZE_CHASE,
+      TemplateType.MULTIPLE_CHOICE, TemplateType.TRUE_FALSE, TemplateType.MATCHING, TemplateType.ESSAY
+    ],
+    SMP: [
+      TemplateType.FLASHCARD, TemplateType.HANGMAN, TemplateType.WORD_SEARCH,
+      TemplateType.ANAGRAM, TemplateType.MAZE_CHASE,
+      TemplateType.MULTIPLE_CHOICE, TemplateType.TRUE_FALSE, TemplateType.MATCHING, TemplateType.ESSAY
+    ],
+    SMA: [
+      TemplateType.FLASHCARD, TemplateType.ANAGRAM, TemplateType.SPIN_THE_WHEEL,
+      TemplateType.MULTIPLE_CHOICE, TemplateType.TRUE_FALSE, TemplateType.MATCHING, TemplateType.ESSAY
+    ],
+    UNIVERSITY: [
+      TemplateType.FLASHCARD, TemplateType.ANAGRAM, TemplateType.SPIN_THE_WHEEL,
+      TemplateType.MULTIPLE_CHOICE, TemplateType.TRUE_FALSE, TemplateType.MATCHING, TemplateType.ESSAY
+    ],
   };
 
   const templates = templateMapping[educationLevel] ?? [];
@@ -351,6 +455,11 @@ const getTemplateDescription = (type: TemplateType): string => {
     MAZE_CHASE: "Jawab soal sambil berpetualang di labirin",
     SPIN_THE_WHEEL: "Putar roda untuk mendapatkan pertanyaan acak",
     WORD_SEARCH: "Temukan kata-kata tersembunyi di dalam kotak huruf",
+    // Penjelasan untuk Standard Assessment
+    MULTIPLE_CHOICE: "Kuis pilihan ganda klasik dengan 4 opsi jawaban",
+    TRUE_FALSE: "Tentukan pernyataan benar atau salah dengan cepat",
+    MATCHING: "Pasangkan pernyataan di kolom kiri dengan jawaban di kolom kanan",
+    ESSAY: "Jawab pertanyaan secara terbuka dengan penilaian otomatis dari AI",
   };
   return descriptions[type] ?? "";
 };

@@ -35,12 +35,19 @@ enum EducationLevel {
 }
 
 enum TemplateType {
+  // Sprint 2 Templates
   ANAGRAM
   FLASHCARD
   HANGMAN
   MAZE_CHASE
   SPIN_THE_WHEEL
   WORD_SEARCH
+
+  // Sprint 3 Standard Assessment Templates [NEW]
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  MATCHING
+  ESSAY
 }
 
 enum DifficultyLevel {
@@ -148,7 +155,6 @@ model Result {
 
   answersDetail   Json  @default("[]")
   aiGradingResult Json?
-
   completedAt DateTime @default(now())
 
   session GameSession @relation(fields: [sessionId], references: [id])
@@ -173,4 +179,19 @@ model LtiContext {
 
   @@unique([ltiContextId, moodleInstanceUrl])
   @@map("lti_contexts")
+}
+
+// ============================================================
+// SYSTEM LOGS
+// ============================================================
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String?
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@map("system_logs")
 }

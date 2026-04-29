@@ -1,6 +1,7 @@
-﻿import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { EducationLevel } from "@prisma/client";
-import { createGameSchema, updateGameSchema, gameQuerySchema } from "./game.schema";
+import { createGameSchema, updateGameSchema, gameQuerySchema, submitAnswerSchema } from "./game.schema";
+
 import * as gameService from "./game.service";
 import { successResponse, errorResponse } from "../../utils/response";
 import { type AuthenticatedRequest } from "../../middleware/auth.middleware";
@@ -204,18 +205,25 @@ export const submitAnswer = async (req: Request, res: Response, next: NextFuncti
     }
 
     const id = req.params.id as string;
-    const { questionIndex, selectedAnswer, earnedPoints } = req.body;
+    const parsed = submitAnswerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json(errorResponse("Validation error", parsed.error.flatten().fieldErrors));
+      return;
+    }
+
+    const { questionIndex, selectedAnswer, earnedPoints } = parsed.data;
     
-    console.log(`[SUBMIT_ANSWER] req.body:`, req.body);
+    console.log(`[SUBMIT_ANSWER] Validated body:`, parsed.data);
     
     const result = await gameService.submitAnswer(
       id, 
       userId as string, 
-      questionIndex, 
+      questionIndex as number, 
       selectedAnswer,
       undefined,
       earnedPoints
     );
+
     res.status(200).json(successResponse(result, "Jawaban berhasil dikirim"));
   } catch (error: any) {
     res.status(500).json(errorResponse(error.message));

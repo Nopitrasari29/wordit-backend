@@ -3,6 +3,7 @@ import { env } from "./src/config/env";
 import { createServer } from "http";
 import { initSocket } from "./src/socket";
 import "./src/config/redis"; // ✅ Pastikan Redis siap untuk caching leaderboard
+import { startTelegramBot } from "./src/utils/telegram.service"; // ✅ IMPORT TELEGRAM BOT
 
 // 🎯 Ambil port dari env dengan fallback ke 5000 (standar Node.js)
 const port = env?.port ? parseInt(env.port) : 5000;
@@ -15,7 +16,10 @@ const server = createServer(app);
 // Fungsi initSocket yang kita buat tadi akan membungkus server ini.
 initSocket(server);
 
-// 3. Nyalakan Server
+// 3. Nyalakan Telegram Bot Approval System
+startTelegramBot();
+
+// 4. Nyalakan Server
 server.listen(port, () => {
   console.log(`
   ==================================================
@@ -23,6 +27,7 @@ server.listen(port, () => {
   📡 URL         : http://localhost:${port}
   🛠️  Environment : ${process.env.NODE_ENV || 'development'}
   🎮 Real-time   : Socket.io Initialized
+  🤖 Telegram    : Bot Approval Standby
   ==================================================
   `);
 });

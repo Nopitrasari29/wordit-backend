@@ -43,8 +43,53 @@ const getSystemPrompt = (educationLevel: string, templateType: string): string =
 }`;
       break;
 
+    case "MULTIPLE_CHOICE":
+      formatInstruction = `
+{
+  "template": "MULTIPLE_CHOICE",
+  "questions": [
+    { 
+      "question": "Pertanyaan", 
+      "options": ["Opsi A", "Opsi B", "Opsi C", "Opsi D"], 
+      "correctAnswer": "Jawaban yang benar (harus persis sama dengan salah satu opsi)" 
+    }
+  ]
+}`;
+      break;
+
+    case "TRUE_FALSE":
+      formatInstruction = `
+{
+  "template": "TRUE_FALSE",
+  "questions": [
+    { "question": "Pernyataan", "correctAnswer": true }
+  ]
+}`;
+      break;
+
+    case "MATCHING":
+      formatInstruction = `
+{
+  "template": "MATCHING",
+  "pairs": [
+    { "leftItem": "Sisi Kiri", "rightItem": "Pasangan Kanan" }
+  ]
+}`;
+      break;
+
+    case "ESSAY":
+      formatInstruction = `
+{
+  "template": "ESSAY",
+  "questions": [
+    { "question": "Pertanyaan Terbuka", "keywords": ["Kata Kunci 1", "Kata Kunci 2", "Kata Kunci 3"] }
+  ]
+}`;
+      break;
+
     default:
       formatInstruction = `{ "error": "Template tidak dikenal" }`;
+
   }
 
   return `

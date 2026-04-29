@@ -5,9 +5,9 @@ let io: Server;
 
 /**
  * 🎯 PENAMPUNG DATA REAL-TIME (In-Memory)
- * Struktur: { "OZE0RU": [{ id: "socketId", name: "Aswalia", score: 0 }, ...] }
+ * Struktur: { "OZE0RU": { status: "waiting", players: [{ id: "socketId", name: "Aswalia", score: 0 }] } }
  */
-const rooms: Record<string, any[]> = {};
+const rooms: Record<string, { status: "waiting" | "playing"; players: any[] }> = {};
 
 export const getRooms = () => rooms;
 
@@ -32,9 +32,11 @@ export const initSocket = (httpServer: HttpServer) => {
       socket.join(roomCode);
       console.log(`✅ SUCCESS: Host joined Room [${roomCode}]`);
 
-      if (rooms[roomCode]) {
-        io.to(roomCode).emit("updatePlayerList", rooms[roomCode]);
+      if (!rooms[roomCode]) {
+        rooms[roomCode] = { status: "waiting", players: [] };
       }
+      
+      io.to(roomCode).emit("updatePlayerList", rooms[roomCode].players);
     });
 
     // 2. 👤 JOIN LOBBY: Siswa masuk ke ruangan kuis
@@ -43,32 +45,43 @@ export const initSocket = (httpServer: HttpServer) => {
       if (!roomCode || !playerName) return;
 
       socket.join(roomCode);
-      if (!rooms[roomCode]) rooms[roomCode] = [];
-
-      const currentRoom = rooms[roomCode];
-      if (currentRoom) {
-        const isExist = currentRoom.find(p => p.id === socket.id);
-        if (!isExist) {
-          currentRoom.push({ id: socket.id, name: playerName, score: 0 });
-        }
-        console.log(`👤 Player [${playerName}] joined Room: ${roomCode}`);
-        io.to(roomCode).emit("updatePlayerList", currentRoom);
+      if (!rooms[roomCode]) {
+        rooms[roomCode] = { status: "waiting", players: [] };
       }
+
+      const room = rooms[roomCode];
+      const isExist = room.players.find(p => p.id === socket.id);
+      
+      if (!isExist) {
+        room.players.push({ id: socket.id, name: playerName, score: 0 });
+      }
+
+      console.log(`👤 Player [${playerName}] joined Room: ${roomCode} [${room.status}]`);
+      
+      // Kirim info status terbaru ke siswa yang baru join
+      socket.emit("lobbyInfo", { 
+        status: room.status,
+        players: room.players 
+      });
+
+      // Update daftar pemain ke semua orang (termasuk Host)
+      io.to(roomCode).emit("updatePlayerList", room.players);
     });
+
 
     // 3. 📈 UPDATE SCORE: Live update saat siswa menjawab benar
     socket.on("updateScore", ({ code, score }: { code: string; score: number }) => {
       const roomCode = code?.toUpperCase().trim();
-      const currentRoom = rooms[roomCode];
+      const room = rooms[roomCode];
 
-      if (currentRoom) {
-        const playerIndex = currentRoom.findIndex(p => p.id === socket.id);
+      if (room) {
+        const playerIndex = room.players.findIndex(p => p.id === socket.id);
         if (playerIndex !== -1) {
-          currentRoom[playerIndex].score = score;
-          console.log(`📈 [${roomCode}] ${currentRoom[playerIndex].name}: ${score} pts`);
+          room.players[playerIndex].score = score;
+          console.log(`📈 [${roomCode}] ${room.players[playerIndex].name}: ${score} pts`);
 
           // Kirim balik ke Guru agar ranking berubah real-time
-          io.to(roomCode).emit("updatePlayerList", currentRoom);
+          io.to(roomCode).emit("updatePlayerList", room.players);
         }
       }
     });
@@ -76,18 +89,20 @@ export const initSocket = (httpServer: HttpServer) => {
     // 4. 🚀 START GAME: Guru menekan tombol Start
     socket.on("startGame", (code: string) => {
       const roomCode = code?.toUpperCase().trim();
-      if (!roomCode) return;
+      if (!rooms[roomCode]) return;
 
-      console.log(`🚀 START SIGNAL: Room ${roomCode}`);
+      rooms[roomCode].status = "playing";
+      console.log(`🚀 START SIGNAL: Room ${roomCode} is now playing.`);
       io.to(roomCode).emit("gameStarted", roomCode);
     });
 
     // 5. 🏁 FINISH GAME: Guru mengakhiri sesi kuis
     socket.on("finishGame", async (code: string) => {
       const roomCode = code?.toUpperCase().trim();
-      const finalPlayers = rooms[roomCode];
+      const room = rooms[roomCode];
 
-      if (finalPlayers) {
+      if (room) {
+        const finalPlayers = room.players;
         console.log(`🏁 FINISH SIGNAL: Saving results for ${roomCode}`);
 
         /**
@@ -113,17 +128,17 @@ export const initSocket = (httpServer: HttpServer) => {
     // 6. 🔌 DISCONNECT: User keluar atau tutup tab
     socket.on("disconnect", () => {
       Object.keys(rooms).forEach((roomCode) => {
-        const currentRoom = rooms[roomCode];
-        if (currentRoom) {
-          const playerIndex = currentRoom.findIndex((p) => p.id === socket.id);
+        const room = rooms[roomCode];
+        if (room) {
+          const playerIndex = room.players.findIndex((p) => p.id === socket.id);
           if (playerIndex !== -1) {
-            const playerName = currentRoom[playerIndex].name;
-            currentRoom.splice(playerIndex, 1);
+            const playerName = room.players[playerIndex].name;
+            room.players.splice(playerIndex, 1);
 
-            io.to(roomCode).emit("updatePlayerList", currentRoom);
+            io.to(roomCode).emit("updatePlayerList", room.players);
             console.log(`👋 ${playerName} left ${roomCode}`);
 
-            if (currentRoom.length === 0) {
+            if (room.players.length === 0) {
               delete rooms[roomCode];
             }
           }
