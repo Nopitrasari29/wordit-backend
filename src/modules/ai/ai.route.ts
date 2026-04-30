@@ -1,19 +1,38 @@
 import { Router } from "express";
 import * as aiController from "./ai.controller";
-import { authMiddleware } from "../../middleware/auth.middleware"; // ✅ TAMBAHKAN PROTEKSI
-
+import { authMiddleware } from "../../middleware/auth.middleware";
 const router = Router();
-
 // =====================================================================
 // 🤖 AI & SMART GRADING ROUTES
 // Base URL: /api/ai
 // =====================================================================
-
-// Endpoint AI lama (Kita amankan pakai authMiddleware)
-router.post("/generate-quiz", authMiddleware(), aiController.generateQuiz);
-router.post("/get-feedback", authMiddleware(), aiController.getAIFeedback);
-
-// Endpoint Baru: BE-17 Smart Grading (Menilai jawaban essay siswa secara instan)
-router.post("/grade", authMiddleware(), aiController.gradeEssayAnswer);
-
+/**
+🛠️ GENERATE QUIZ
+Hanya bisa diakses oleh TEACHER dan ADMIN.
+Memenuhi kriteria keamanan dokumen SKPL.
+*/
+router.post(
+"/generate-quiz",
+authMiddleware(["TEACHER", "ADMIN"]),
+aiController.generateQuiz
+);
+/**
+📖 GET FEEDBACK
+Bisa diakses oleh semua pengguna yang sudah login (STUDENT, TEACHER, ADMIN).
+*/
+router.post(
+"/get-feedback",
+authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+aiController.getAIFeedback
+);
+/**
+📝 SMART GRADING (BE-17)
+Digunakan oleh Student saat mensubmit esai, atau Teacher saat mengevaluasi.
+*/
+router.post(
+"/grade",
+authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+aiController.gradeEssayAnswer
+);
 export default router;
+

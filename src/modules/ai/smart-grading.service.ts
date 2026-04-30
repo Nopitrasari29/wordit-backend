@@ -1,70 +1,86 @@
 import Groq from "groq-sdk";
+import { getGeminiResponse } from "./providers/gemini.provider"; // ✅ WAJIB DIIMPORT
 
-// Inisialisasi Groq (Pastikan GROQ_API_KEY sudah ada di .env)
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
 export class SmartGradingService {
     /**
-     * Menilai jawaban essay siswa menggunakan AI.
-     * @param question Pertanyaan essay
-     * @param keywords Kata kunci acuan penilaian
-     * @param studentAnswer Jawaban yang diinputkan siswa
-     * @returns Object berisi { score, justification }
+     * Menilai jawaban essay siswa secara otomatis dengan strategi Dual-Provider Fallback.
+     * Target akurasi > 85% melalui optimasi prompt (AI-07 & AI-08).
      */
     static async gradeEssay(
         question: string,
         keywords: string[],
         studentAnswer: string
     ): Promise<{ score: number; justification: string }> {
+        // Pembuatan instruksi penilaian yang mendalam
+        const prompt = `
+        Anda adalah Pakar Evaluasi Pendidikan. Tugas Anda menilai jawaban esai mahasiswa.
+        
+        PERTANYAAN: "${question}"
+        KATA KUNCI ACUAN: ${keywords.join(", ")}
+        JAWABAN MAHASISWA: "${studentAnswer}"
+
+        KRITERIA SKOR (0-100):
+        - 85-100: Akurat, lengkap, dan logis.
+        - 60-84: Benar secara umum, namun ada poin kunci terlewat.
+        - 1-59: Terlalu singkat atau hanya menyebut kata kunci tanpa konteks.
+        - 0: Salah total atau tidak relevan.
+
+        OUTPUT WAJIB JSON:
+        { "score": number, "justification": "Penjelasan singkat max 50 kata" }
+        `;
+
         try {
-            // =====================================================================
-            // 🤖 AREA CANTIKA (AI PROMPT ENGINEERING)
-            // Cantika bisa memodifikasi prompt di bawah ini untuk tuning akurasi.
-            // Pastikan response_format tetap JSON agar Backend tidak error.
-            // =====================================================================
-            const prompt = `
-        Kamu adalah seorang guru ahli yang bertugas menilai jawaban esai siswa secara objektif.
-        
-        Pertanyaan: "${question}"
-        Kata Kunci / Poin Penting yang Diharapkan: ${keywords.join(", ")}
-        Jawaban Siswa: "${studentAnswer}"
+            console.log("[Smart Grading] Memulai penilaian melalui Groq...");
 
-        Tugasmu:
-        1. Berikan nilai dari skala 0 hingga 100 berdasarkan kelengkapan jawaban dan kesesuaian dengan kata kunci.
-        2. Berikan penjelasan singkat (justifikasi) maksimal 50 kata mengapa siswa mendapatkan nilai tersebut.
-        
-        Keluarkan hasil HANYA dalam format JSON persis seperti ini tanpa markdown atau teks tambahan:
-        {
-          "score": 85,
-          "justification": "Jawaban sudah mencakup sebagian besar kata kunci dengan pemahaman yang baik, namun kurang menjelaskan detail X."
-        }
-      `;
-
-            // Memanggil API Groq
             const completion = await groq.chat.completions.create({
                 messages: [{ role: "user", content: prompt }],
-                model: "mixtral-8x7b-32768", // Model bisa diganti oleh Cantika nanti
-                temperature: 0.2, // Temperature rendah agar konsisten
-                response_format: { type: "json_object" }, // Wajib agar AI selalu me-return JSON
+                model: "llama-3.1-8b-instant", 
+                temperature: 0.2,
+                response_format: { type: "json_object" },
             });
 
-            // Parsing respons AI
-            const aiResponse = completion.choices[0]?.message?.content || "{}";
-            const parsedResult = JSON.parse(aiResponse);
+            const parsedResult = JSON.parse(completion.choices[0]?.message?.content || "{}");
+            console.log(`[Smart Grading] Groq Berhasil ✅ - Skor: ${parsedResult.score}`);
 
             return {
                 score: parsedResult.score || 0,
-                justification: parsedResult.justification || "Gagal mendapatkan justifikasi dari AI.",
+                justification: parsedResult.justification || "Berhasil dinilai.",
             };
-        } catch (error) {
-            console.error("❌ Smart Grading Error:", error);
-            // Fallback aman jika API Groq sedang limit atau down
-            return {
-                score: 0,
-                justification: "Sistem AI sedang sibuk. Jawaban akan dinilai manual oleh Guru.",
-            };
+
+        } catch (error: any) {
+            // 🔄 IMPLEMENTASI FALLBACK KE GEMINI (AI-02)
+            console.warn("[Smart Grading] Groq mengalami kendala. Mengalihkan ke Gemini...");
+            
+            try {
+                // Memanggil provider cadangan
+                const geminiRes = await getGeminiResponse(
+                    "Anda adalah Pakar Evaluasi Pendidikan. Jawab HANYA dalam format JSON murni.",
+                    prompt
+                );
+                
+                // Ekstraksi JSON dari string respons Gemini
+                const start = geminiRes.indexOf('{');
+                const end = geminiRes.lastIndexOf('}') + 1;
+                const parsedResult = JSON.parse(geminiRes.substring(start, end));
+                
+                console.log(`[Smart Grading] Gemini Berhasil ✅ - Skor: ${parsedResult.score}`);
+
+                return {
+                    score: parsedResult.score || 0,
+                    justification: parsedResult.justification || "Dinilai melalui sistem cadangan.",
+                };
+
+            } catch (fallbackError: any) {
+                console.error("❌ [Smart Grading Critical]: Seluruh provider gagal.");
+                return {
+                    score: 0,
+                    justification: "Layanan penilaian AI sedang sibuk. Silakan coba beberapa saat lagi.",
+                };
+            }
         }
     }
 }
