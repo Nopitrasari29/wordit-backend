@@ -11,6 +11,7 @@ const QUOTA_ALERT_THRESHOLD = 11500;
 
 /**
  * Generator system prompt
+ * Diperketat pada bagian MATCHING sesuai permintaan tim Frontend (AI-08).
  */
 const getSystemPrompt = (
   educationLevel: string,
@@ -40,7 +41,18 @@ const getSystemPrompt = (
       formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "...", "correctAnswer": true, "hint": "Petunjuk" } ] }`;
       break;
     case "MATCHING": 
-      formatInstruction = `{ "template": "MATCHING", "pairs": [ { "leftItem": "Kunci", "rightItem": "Pasangan", "hint": "Relasi" } ] }`;
+      // ✅ PERBAIKAN STRIK UNTUK FRONTEND (AI-08)
+      formatInstruction = `
+      { 
+        "template": "MATCHING", 
+        "pairs": [ 
+          { "leftItem": "Istilah/Kunci", "rightItem": "Definisi/Pasangan", "hint": "Petunjuk" } 
+        ] 
+      }
+      ⚠️ PERINGATAN KERAS: 
+      - WAJIB gunakan kunci "leftItem" dan "rightItem". 
+      - JANGAN gunakan kunci lain seperti "left", "right", atau "pair". 
+      - Pasangkan kiri dan kanan secara logis dan unik.`;
       break;
     case "ESSAY":
       formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "...", "keywords": ["..."], "hint": "Saran" } ] }`;
@@ -92,6 +104,7 @@ const validateStructure = (data: any, templateType: string): boolean => {
       return item.question && typeof item.correctAnswer === "boolean";
     }
     if (templateType === "MATCHING") {
+      // ✅ Memastikan konsistensi nama field untuk Frontend
       return item.leftItem && item.rightItem;
     }
     if (templateType === "ESSAY") {
@@ -156,6 +169,7 @@ export const generateQuizContent = async (
 
   let attempts = 0;
 
+  // Mekanisme retry
   while (attempts < 3) {
     try {
       const systemPrompt = getSystemPrompt(educationLevel, templateType, count, difficulty, attempts + 1);
@@ -182,7 +196,6 @@ export const generateQuizContent = async (
   await sendTeleAlert(`Groq gagal pada kuis ${templateType}. Fallback Gemini aktif.`);
   try {
     const systemPrompt = getSystemPrompt(educationLevel, templateType, count, difficulty, 3);
-    // ✅ PERBAIKAN: Instruksi user prompt diperjelas agar Gemini memberikan JSON yang valid
     const res = await getGeminiResponse(systemPrompt, `Topik: ${topic}. Hasilkan tepat ${count} soal dalam format JSON.`);
     return processAiResponse(res || "");
   } catch (err) {
@@ -195,7 +208,7 @@ export const generateQuizContent = async (
  */
 export const generateFeedbackContent = async (questionText: string, correctAnswer: string) => {
   const systemPrompt = `Berikan penjelasan edukatif menyemangati max 100 kata. JSON: { "feedback": "..." }`;
-  const userPrompt = `Pertanyaan: ${questionText}\nJawaban: ${correctAnswer}`;
+  const userPrompt = `Pertanyaan: ${questionText}\nJawaban Benar: ${correctAnswer}`;
   try {
     const res = await getGroqResponse(systemPrompt, userPrompt);
     return processAiResponse(res || "");
