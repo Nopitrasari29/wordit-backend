@@ -304,6 +304,7 @@ export const finishGame = async (
   let correctAnswers = 0;
 
   let aiGradingResult: any = null;
+  let updatedAnswersDetail: any[] = payload.answersDetail;
 
   if (game.templateType === TemplateType.MULTIPLE_CHOICE) {
     totalQuestions = content.questions?.length || 0;
@@ -332,27 +333,48 @@ export const finishGame = async (
   else if (game.templateType === TemplateType.ESSAY) {
     totalQuestions = content.questions?.length || 0;
     const gradingResults = [];
+    updatedAnswersDetail = [];
     let totalAiScore = 0;
 
-    for (const ans of payload.answersDetail) {
-      const questionObj = content.questions[ans.questionIndex];
-      if (questionObj) {
-        const result = await SmartGradingService.gradeEssay(
-          questionObj.question,
-          questionObj.keywords,
-          ans.selectedAnswer
-        );
-        gradingResults.push({
-          questionIndex: ans.questionIndex,
-          question: questionObj.question,
-          answer: ans.selectedAnswer,
-          score: result.score,
-          justification: result.justification
-        });
-        totalAiScore += result.score;
-      }
-    }
+  for (const ans of payload.answersDetail) {
+  const questionObj = content.questions[ans.questionIndex];
 
+  if (questionObj) {
+    const result = await SmartGradingService.gradeEssay(
+      questionObj.question,
+      questionObj.keywords,
+      ans.selectedAnswer
+    );
+
+    gradingResults.push({
+      questionIndex: ans.questionIndex,
+      question: questionObj.question,
+      answer: ans.selectedAnswer,
+      score: result.score,
+      justification: result.justification,
+      correctAnswer: result.correctAnswer
+    });
+
+    // 🔥 INI YANG FIX UTAMA
+    updatedAnswersDetail.push({
+      questionIndex: ans.questionIndex,
+      question: questionObj.question,
+      selectedAnswer: ans.selectedAnswer,
+
+      isCorrect: result.score >= 60,
+      pointsEarned: result.score,
+
+      justification: result.justification,
+      correctAnswer: result.correctAnswer,
+
+      keywordsMatched: result.keywordsMatched,
+      keywordsMissing: result.keywordsMissing,
+    });
+
+    totalAiScore += result.score;
+  }
+}
+    payload.answersDetail = updatedAnswersDetail;
     finalScore = totalQuestions > 0 ? Math.round(totalAiScore / totalQuestions) : 0;
     finalAccuracy = finalScore; // Untuk essay, akurasi disamakan dengan skor rata-rata
     aiGradingResult = gradingResults;
@@ -374,7 +396,7 @@ export const finishGame = async (
         accuracy: finalAccuracy,
         timeSpent: payload.timeSpent,
         difficultyPlayed: game.difficulty,
-        answersDetail: payload.answersDetail as Prisma.InputJsonValue,
+        answersDetail: updatedAnswersDetail as Prisma.InputJsonValue,
         aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
       },
     });
@@ -405,7 +427,7 @@ export const finishGame = async (
       accuracy: finalAccuracy,
       timeSpent: payload.timeSpent,
       difficultyPlayed: game.difficulty,
-      answersDetail: payload.answersDetail as Prisma.InputJsonValue,
+      answersDetail: updatedAnswersDetail as Prisma.InputJsonValue,
       aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
     },
   });
