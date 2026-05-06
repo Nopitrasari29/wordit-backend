@@ -34,7 +34,11 @@ bot.action(/approve_(.+)/, async (ctx) => {
 
         // Emit socket ke FE agar halaman Admin otomatis refresh
         const io = getIO();
-        io.to("admin").emit("admin_refresh", { message: "Data user terupdate" });
+        io.to("admin").emit("admin_refresh", {
+            type: "USER_APPROVAL_UPDATED",
+            userId: user.id,
+            approvalStatus: user.approvalStatus,
+        });
 
     } catch (error) {
         console.error("❌ Gagal approve via Telegram:", error);

@@ -1,10 +1,11 @@
-﻿import { prisma } from "../../config/database";
+import { prisma } from "../../config/database";
 import { hashPassword, comparePassword } from "../../utils/hash";
 import { generateToken } from "../../utils/jwt";
 import type { RegisterInput, LoginInput } from "./auth.schema";
 import { Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 import { sendApprovalRequestToTele } from "../../utils/telegram.service"; // ✅ IMPORT BOT TELEGRAM
 import { getIO } from "../../socket"; // ✅ IMPORT SOCKET.IO UNTUK NOTIF ADMIN WEB
+import { createSystemLog } from "../../utils/system-logger";
 
 export const register = async (data: RegisterInput) => {
   // BE-NEW-03: Admin TIDAK BISA register via endpoint
@@ -52,9 +53,28 @@ export const register = async (data: RegisterInput) => {
   });
 
   // =========================================================
+  // 📝 SYSTEM LOG REGISTER
+  // =========================================================
+  await createSystemLog({
+    action: "REGISTER",
+    details: `${user.name} melakukan registrasi sebagai ${user.role}`,
+    userId: user.id,
+    userName: user.name,
+  });
+
+  // =========================================================
   // 🚀 TRIGGER TELEGRAM BOT & WEB NOTIF (JIKA ROLE TEACHER)
   // =========================================================
   if (user.role === Role.TEACHER) {
+
+    // 📝 SYSTEM LOG TEACHER REGISTER
+    await createSystemLog({
+      action: "TEACHER_REGISTER",
+      details: `Teacher ${user.name} mendaftar dan menunggu approval`,
+      userId: user.id,
+      userName: user.name,
+    });
+
     // 1. Kirim notif ke Telegram
     sendApprovalRequestToTele({
       id: user.id,
@@ -66,6 +86,7 @@ export const register = async (data: RegisterInput) => {
     // 2. Kirim notif Real-time ke Dashboard Admin via Socket (BE-20)
     try {
       const io = getIO();
+
       // Mengirim event "new_registration" ke room "admin"
       io.to("admin").emit("new_registration", {
         message: `👨‍🏫 Guru baru mendaftar: ${user.name}`,
@@ -75,6 +96,7 @@ export const register = async (data: RegisterInput) => {
           email: user.email
         }
       });
+
       console.log(`📡 Socket emit: Notifikasi pendaftaran ${user.name} terkirim ke web Admin.`);
     } catch (err) {
       console.error("❌ Gagal emit socket notif admin:", err);
@@ -91,31 +113,60 @@ export const register = async (data: RegisterInput) => {
     };
   }
 
-  const token = generateToken({ userId: user.id, email: data.email, role: user.role });
+  const token = generateToken({
+    userId: user.id,
+    email: data.email,
+    role: user.role
+  });
+
   return { user, token };
 };
 
 export const login = async (data: LoginInput) => {
-  const user = await prisma.user.findUnique({ where: { email: data.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: data.email }
+  });
+
   if (!user) throw new Error("Invalid email or password");
 
   const isMatch = await comparePassword(data.password, user.password);
+
   if (!isMatch) throw new Error("Invalid email or password");
 
   // BE-NEW-01: Blokir login jika Teacher belum di-approve
-  if (user.role === Role.TEACHER && user.approvalStatus === ApprovalStatus.PENDING) {
+  if (
+    user.role === Role.TEACHER &&
+    user.approvalStatus === ApprovalStatus.PENDING
+  ) {
     throw new Error(
       "Akun kamu masih menunggu persetujuan Admin. Mohon tunggu konfirmasi melalui email."
     );
   }
 
-  if (user.role === Role.TEACHER && user.approvalStatus === ApprovalStatus.REJECTED) {
+  if (
+    user.role === Role.TEACHER &&
+    user.approvalStatus === ApprovalStatus.REJECTED
+  ) {
     throw new Error(
       "Akun kamu ditolak oleh Admin. Hubungi administrator untuk informasi lebih lanjut."
     );
   }
 
-  const token = generateToken({ userId: user.id, email: user.email, role: user.role });
+  // =========================================================
+  // 📝 SYSTEM LOG LOGIN
+  // =========================================================
+  await createSystemLog({
+    action: "LOGIN",
+    details: `${user.name} berhasil login`,
+    userId: user.id,
+    userName: user.name,
+  });
+
+  const token = generateToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role
+  });
 
   return {
     user: {
@@ -131,7 +182,21 @@ export const login = async (data: LoginInput) => {
 };
 
 export const logout = async (userId: string) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId }
+  });
+
   if (!user) throw new Error("User not found");
+
+  // =========================================================
+  // 📝 SYSTEM LOG LOGOUT
+  // =========================================================
+  await createSystemLog({
+    action: "LOGOUT",
+    details: `${user.name} logout dari sistem`,
+    userId: user.id,
+    userName: user.name,
+  });
+
   return { message: "Logged out successfully" };
 };
