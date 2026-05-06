@@ -47,7 +47,7 @@ const getSystemPrompt = (
     case "TRUE_FALSE":
       formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "Pernyataan faktual yang harus dinilai benar atau salahnya oleh siswa", "correctAnswer": true, "hint": "Penjelasan singkat fakta sebenarnya" } ] }`;
       break;
-    case "MATCHING": 
+    case "MATCHING":
       formatInstruction = `
       { 
         "template": "MATCHING", 
@@ -101,22 +101,103 @@ const getItemsCount = (data: any): number => {
  */
 const validateStructure = (data: any, templateType: string): boolean => {
   const list = data.words || data.cards || data.questions || data.pairs;
+
   if (!Array.isArray(list)) return false;
 
+  // =========================================================
+  // 🔥 MATCHING AI NORMALIZER FIX
+  // =========================================================
+  // AI kadang mengembalikan:
+  // left/right
+  // front/back
+  // question/answer
+  // Maka kita normalisasi otomatis agar engine stabil
+  // =========================================================
+
+  if (templateType === "MATCHING") {
+    data.pairs = data.pairs?.map((item: any) => ({
+      leftItem:
+        item.leftItem ||
+        item.left ||
+        item.question ||
+        item.front ||
+        "",
+
+      rightItem:
+        item.rightItem ||
+        item.right ||
+        item.answer ||
+        item.back ||
+        "",
+
+      hint: item.hint || "",
+    }));
+
+    // =========================================================
+    // 🔥 VALIDASI DUPLIKAT RIGHT ITEM
+    // Mencegah AI membuat pasangan ambigu
+    // =========================================================
+
+    const rightItems = data.pairs.map((p: any) => p.rightItem);
+
+    const uniqueRightItems = new Set(rightItems);
+
+    if (uniqueRightItems.size !== rightItems.length) {
+      console.warn("⚠️ Duplicate matching pairs detected from AI");
+      return false;
+    }
+  }
+
+  // =========================================================
+  // 🔥 VALIDASI STRUCTURE PER TEMPLATE
+  // =========================================================
+
   return list.every((item: any) => {
+    // =====================================================
+    // MULTIPLE CHOICE
+    // =====================================================
     if (templateType === "MULTIPLE_CHOICE") {
-      return item.question && item.options && item.correctAnswer;
+      return (
+        item.question &&
+        Array.isArray(item.options) &&
+        item.options.length >= 2 &&
+        item.correctAnswer
+      );
     }
+
+    // =====================================================
+    // TRUE FALSE
+    // =====================================================
     if (templateType === "TRUE_FALSE") {
-      return item.question && typeof item.correctAnswer === "boolean";
+      return (
+        item.question &&
+        typeof item.correctAnswer === "boolean"
+      );
     }
+
+    // =====================================================
+    // MATCHING
+    // =====================================================
     if (templateType === "MATCHING") {
-      // ✅ Memastikan konsistensi nama field untuk Frontend
-      return item.leftItem && item.rightItem;
+      return (
+        item.leftItem &&
+        item.rightItem
+      );
     }
+
+    // =====================================================
+    // ESSAY
+    // =====================================================
     if (templateType === "ESSAY") {
-      return item.question && item.keywords;
+      return (
+        item.question &&
+        Array.isArray(item.keywords)
+      );
     }
+
+    // =====================================================
+    // DEFAULT TEMPLATE
+    // =====================================================
     return true;
   });
 };
