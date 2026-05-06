@@ -135,7 +135,7 @@ export const seedGames = async () => {
     // ✅ SAFE UPSERT: Tidak akan menghapus game yang sudah ada!
     // Hanya update game dummy ini jika title-nya sudah ada
     await prisma.game.upsert({
-      where: { title: game.title },
+      where: { shareCode: game.shareCode, },
       update: {
         // Update data game dummy jika ada perubahan
         description: game.description,
@@ -146,7 +146,7 @@ export const seedGames = async () => {
       create: game,
     });
 
-    const existing = await prisma.game.findUnique({ where: { title: game.title } });
+    const existing = await prisma.game.findUnique({ where: { shareCode: game.shareCode, } });
     if (existing) {
       console.log(`  OK [${game.templateType}]: "${game.title}" (Code: ${game.shareCode})`);
       seededCount++;
