@@ -1,13 +1,16 @@
 import { prisma } from "../../config/database";
 
 // =====================================================================
-// 👨‍🎓 STUDENT ANALYTICS (BE-15)
+// 👨‍🎓 STUDENT ANALYTICS (BE-15) - UPDATED FOR SYNC
 // =====================================================================
 export const getStudentAnalytics = async (userId: string) => {
     const stats = await prisma.result.aggregate({
         where: { session: { userId: userId } },
         _avg: { scoreValue: true, accuracy: true },
-        _sum: { timeSpent: true },
+        _sum: { 
+            timeSpent: true,
+            scoreValue: true // 🛠️ Tambahkan SUM untuk kalkulasi XP di Frontend
+        },
         _count: { id: true },
     });
 
@@ -26,6 +29,7 @@ export const getStudentAnalytics = async (userId: string) => {
             totalGamesPlayed: stats._count.id || 0,
             averageScore: Math.round(stats._avg.scoreValue || 0),
             averageAccuracy: Math.round(stats._avg.accuracy || 0),
+            totalXp: stats._sum.scoreValue || 0, // 🛠️ Kirim total akumulasi skor ke FE
             totalTimeSpentSeconds: stats._sum.timeSpent || 0,
         },
         recentHistory: recentHistory.map((session) => ({
@@ -40,6 +44,8 @@ export const getStudentAnalytics = async (userId: string) => {
         })),
     };
 };
+
+// ... (logika teacher dan adaptive difficulty tetap sama sesuai file asli Anda)
 
 // =====================================================================
 // 👨‍🏫 TEACHER ANALYTICS (BE-16)
