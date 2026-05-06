@@ -98,7 +98,7 @@ model UserProfile {
 
 model Game {
   id             String          @id @default(uuid())
-  title          String          @unique
+  title          String
   description    String?
   templateType   TemplateType
   educationLevel EducationLevel

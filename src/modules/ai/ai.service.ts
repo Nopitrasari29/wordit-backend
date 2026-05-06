@@ -9,10 +9,6 @@ import { SmartGradingService } from "./smart-grading.service";
 let dailyApiHits = 0;
 const QUOTA_ALERT_THRESHOLD = 11500;
 
-/**
- * Generator system prompt
- * Diperketat pada bagian MATCHING sesuai permintaan tim Frontend (AI-08).
- */
 const getSystemPrompt = (
   educationLevel: string,
   templateType: string,
@@ -22,55 +18,66 @@ const getSystemPrompt = (
 ): string => {
   let formatInstruction = "";
 
+  let essayInstruction = "Pertanyaan terbuka.";
+  if (educationLevel === "SD") {
+    essayInstruction = "Pertanyaan deskriptif yang sangat sederhana, mudah dibayangkan, dan ramah anak";
+  } else if (educationLevel === "SMP") {
+    essayInstruction = "Pertanyaan yang meminta penjelasan alasan atau perbandingan dasar";
+  } else if (educationLevel === "SMA") {
+    essayInstruction = "Pertanyaan terbuka yang memancing daya kritis dan analisis mendalam";
+  } else if (educationLevel === "UNIVERSITY") {
+    essayInstruction = "Pertanyaan studi kasus atau teoritis tingkat lanjut yang membutuhkan evaluasi akademik";
+  }
+
   // Penentuan struktur JSON output
   switch (templateType) {
     case "ANAGRAM":
     case "HANGMAN":
     case "WORD_SEARCH":
-      formatInstruction = `{ "template": "${templateType}", "words": [ { "word": "KATA", "hint": "Petunjuk edukatif" } ] }`;
+      formatInstruction = `{ "template": "${templateType}", "words": [ { "word": "KATA_TARGET_HURUF_KAPITAL", "hint": "Petunjuk yang spesifik dan mendidik" } ] }`;
       break;
     case "FLASHCARD":
-      formatInstruction = `{ "template": "FLASHCARD", "cards": [ { "front": "Istilah", "back": "Penjelasan", "hint": "Petunjuk" } ] }`;
+      formatInstruction = `{ "template": "FLASHCARD", "cards": [ { "front": "Istilah/Konsep", "back": "Definisi yang jelas dan komprehensif", "hint": "Petunjuk singkat" } ] }`;
       break;
     case "MAZE_CHASE":
     case "SPIN_THE_WHEEL":
     case "MULTIPLE_CHOICE":
-      formatInstruction = `{ "template": "${templateType}", "questions": [ { "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "hint": "Petunjuk" } ] }`;
+      formatInstruction = `{ "template": "${templateType}", "questions": [ { "question": "Pertanyaan yang sesuai dengan tingkat ${educationLevel}", "options": ["Jawaban Benar", "Pengecoh Logis 1", "Pengecoh Logis 2", "Pengecoh Logis 3"], "correctAnswer": "Jawaban Benar", "hint": "Petunjuk" } ] }\n\n⚠️ PENTING: Untuk 'options', JANGAN gunakan huruf A/B/C/D, melainkan tulis langsung isi jawabannya yang faktual!`;
       break;
     case "TRUE_FALSE":
-      formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "...", "correctAnswer": true, "hint": "Petunjuk" } ] }`;
+      formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "Pernyataan faktual yang harus dinilai benar atau salahnya oleh siswa", "correctAnswer": true, "hint": "Penjelasan singkat fakta sebenarnya" } ] }`;
       break;
     case "MATCHING": 
-      // ✅ PERBAIKAN STRIK UNTUK FRONTEND (AI-08)
       formatInstruction = `
       { 
         "template": "MATCHING", 
         "pairs": [ 
-          { "leftItem": "Istilah/Kunci", "rightItem": "Definisi/Pasangan", "hint": "Petunjuk" } 
+          { "leftItem": "Sebab / Istilah / Kunci", "rightItem": "Akibat / Definisi / Pasangan yang relevan", "hint": "Petunjuk" } 
         ] 
       }
       ⚠️ PERINGATAN KERAS: 
       - WAJIB gunakan kunci "leftItem" dan "rightItem". 
       - JANGAN gunakan kunci lain seperti "left", "right", atau "pair". 
-      - Pasangkan kiri dan kanan secara logis dan unik.`;
+      - Pasangkan kiri dan kanan secara logis, unik, dan tidak membingungkan.`;
       break;
     case "ESSAY":
-      formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "...", "keywords": ["..."], "hint": "Saran" } ] }`;
+      formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "${essayInstruction}", "keywords": ["kunci1", "kunci2", "kunci3", "kunci4"], "hint": "Arahan cara menjawab" } ] }\n\n⚠️ PENTING: 'keywords' harus berisi 3-5 kata kunci teknis/penting yang WAJIB ada di jawaban siswa agar nilainya sempurna.`;
       break;
     default:
       formatInstruction = `{ "error": "Template tidak dikenal" }`;
   }
 
-  return `Anda pakar kurikulum pendidikan internasional jenjang ${educationLevel}.
+  return `Anda pakar kurikulum pendidikan nasional jenjang ${educationLevel}.
   Tugas: Hasilkan kuis Bahasa Indonesia tipe ${templateType} sebanyak TEPAT ${count} soal.
 
   TINGKAT KESULITAN (AI-10):
   Gunakan tingkat kesulitan: ${difficulty.toUpperCase()}.
   
-  KARAKTERISTIK MATERI (AI-03):
-  1. SD: Bahasa ramah anak, sederhana.
-  2. SMP/SMA: Bahasa formal-edukatif.
-  3. UNIVERSITY: Terminologi akademik lanjut.
+  PANDUAN BAHASA JENJANG ${educationLevel} (AI-03):
+  - SD: Gunakan bahasa yang sangat sederhana, konkret, hindari istilah asing/rumit.
+  - SMP: Gunakan bahasa semi-formal, mulai perkenalkan konsep abstrak dasar.
+  - SMA: Gunakan bahasa formal, analitis, dan istilah ilmiah/teknis.
+  - UNIVERSITY: Gunakan terminologi akademik level lanjut.
 
   ⚠️ ATURAN MUTLAK (STRICT LEVEL ${strictLevel}):
   - JANGAN HALUSINASI. JAWABAN HARUS FAKTUAL DAN BAKU (KBBI).

@@ -123,7 +123,31 @@ export const deleteGame = async (gameId: string, userId: string) => {
   if (!game) throw new Error("Game not found");
   if (game.creatorId !== userId) throw new Error("Unauthorized");
 
-  await prisma.game.delete({ where: { id: gameId } });
+  // Cari semua session ID untuk game ini
+  const sessions = await prisma.gameSession.findMany({
+    where: { gameId },
+    select: { id: true }
+  });
+  const sessionIds = sessions.map(s => s.id);
+
+  // Jalankan penghapusan berantai dalam satu transaksi yang aman
+  await prisma.$transaction(async (tx) => {
+    if (sessionIds.length > 0) {
+      // 1. Hapus Results yang menginduk ke GameSession
+      await tx.result.deleteMany({
+        where: { sessionId: { in: sessionIds } }
+      });
+      
+      // 2. Hapus GameSessions yang menginduk ke Game
+      await tx.gameSession.deleteMany({
+        where: { gameId }
+      });
+    }
+
+    // 3. Terakhir, baru hapus Game utamanya
+    await tx.game.delete({ where: { id: gameId } });
+  });
+
   return { message: "Game deleted successfully" };
 };
 
