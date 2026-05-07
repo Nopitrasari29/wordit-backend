@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
-import { generateQuizContent, generateFeedbackContent } from "./ai.service";
-import { SmartGradingService } from "./smart-grading.service"; 
+import {
+  generateQuizContent,
+  generateFeedbackContent,
+  getApiUsageStats,
+} from "./ai.service";
+import { SmartGradingService } from "./smart-grading.service";
 
 // =====================================================================
 // 🤖 1. GENERATE QUIZ CONTENT (AI-05, AI-08, AI-10)
@@ -18,7 +22,7 @@ export const generateQuiz = async (req: Request, res: Response) => {
       educationLevel,
       templateType,
       count || 5,
-      difficulty || "MEDIUM" // ✅ SINKRONISASI AI-10
+      difficulty || "MEDIUM", // ✅ SINKRONISASI AI-10
     );
 
     return res.status(200).json({
@@ -40,7 +44,10 @@ export const generateQuiz = async (req: Request, res: Response) => {
 export const getAIFeedback = async (req: Request, res: Response) => {
   try {
     const { questionText, correctAnswer } = req.body;
-    const feedbackData = await generateFeedbackContent(questionText, correctAnswer);
+    const feedbackData = await generateFeedbackContent(
+      questionText,
+      correctAnswer,
+    );
     return res.status(200).json({
       success: true,
       message: "Feedback AI berhasil dihasilkan.",
@@ -65,7 +72,8 @@ export const gradeEssayAnswer = async (req: Request, res: Response) => {
     if (!question || !keywords || !studentAnswer) {
       return res.status(400).json({
         success: false,
-        message: "Data tidak lengkap. Pastikan question, keywords, dan studentAnswer dikirim."
+        message:
+          "Data tidak lengkap. Pastikan question, keywords, dan studentAnswer dikirim.",
       });
     }
 
@@ -76,19 +84,47 @@ export const gradeEssayAnswer = async (req: Request, res: Response) => {
     const gradingResult = await SmartGradingService.gradeEssay(
       question,
       keywords,
-      studentAnswer
+      studentAnswer,
     );
 
     return res.status(200).json({
       success: true,
       message: "Berhasil menilai jawaban essay",
-      data: gradingResult
+      data: gradingResult,
     });
   } catch (error: any) {
     console.error("❌ Controller AI Grading Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Terjadi kesalahan saat menghubungi layanan AI Smart Grading."
+      message: "Terjadi kesalahan saat menghubungi layanan AI Smart Grading.",
+    });
+  }
+};
+
+// =====================================================================
+// 🤖 4. AI QUOTA MONITORING (AI-09)
+// Endpoint untuk Admin melihat status penggunaan API AI hari ini.
+// =====================================================================
+export const getQuotaStatus = async (req: Request, res: Response) => {
+  try {
+    const stats = getApiUsageStats();
+    return res.status(200).json({
+      success: true,
+      message: "Status kuota AI berhasil diambil.",
+      data: {
+        ...stats,
+        status:
+          stats.usagePercent >= 95
+            ? "CRITICAL"
+            : stats.usagePercent >= 80
+              ? "WARNING"
+              : "NORMAL",
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

@@ -7,7 +7,8 @@ let io: Server;
  * 🎯 PENAMPUNG DATA REAL-TIME (In-Memory)
  * Struktur: { "OZE0RU": { status: "waiting", players: [{ id: "socketId", name: "Aswalia", score: 0 }] } }
  */
-const rooms: Record<string, { status: "waiting" | "playing"; players: any[] }> = {};
+const rooms: Record<string, { status: "waiting" | "playing"; players: any[] }> =
+  {};
 
 export const getRooms = () => rooms;
 
@@ -16,13 +17,20 @@ export const initSocket = (httpServer: HttpServer) => {
     cors: {
       origin: "http://localhost:5173",
       methods: ["GET", "POST"],
-      credentials: true
+      credentials: true,
     },
     pingTimeout: 60000,
   });
 
   io.on("connection", (socket) => {
     console.log(`🔌 New Connection: ${socket.id}`);
+
+    // 0. 🛡️ ADMIN ROOM: Admin join room khusus untuk menerima notifikasi real-time
+    // Dipanggil dari: Navbar.tsx, AdminDashboard.tsx, UserManagementPage.tsx
+    socket.on("join_admin_room", () => {
+      socket.join("admin");
+      console.log(`🛡️ Admin socket [${socket.id}] joined room [admin]`);
+    });
 
     // 1. 👨‍🏫 HOST JOIN: Guru membuka ruangan proyektor
     socket.on("hostJoin", (code: string) => {
@@ -35,56 +43,65 @@ export const initSocket = (httpServer: HttpServer) => {
       if (!rooms[roomCode]) {
         rooms[roomCode] = { status: "waiting", players: [] };
       }
-      
+
       io.to(roomCode).emit("updatePlayerList", rooms[roomCode].players);
     });
 
     // 2. 👤 JOIN LOBBY: Siswa masuk ke ruangan kuis
-    socket.on("joinLobby", ({ code, playerName }: { code: string; playerName: string }) => {
-      const roomCode = code?.toUpperCase().trim();
-      if (!roomCode || !playerName) return;
+    socket.on(
+      "joinLobby",
+      ({ code, playerName }: { code: string; playerName: string }) => {
+        const roomCode = code?.toUpperCase().trim();
+        if (!roomCode || !playerName) return;
 
-      socket.join(roomCode);
-      if (!rooms[roomCode]) {
-        rooms[roomCode] = { status: "waiting", players: [] };
-      }
+        socket.join(roomCode);
+        if (!rooms[roomCode]) {
+          rooms[roomCode] = { status: "waiting", players: [] };
+        }
 
-      const room = rooms[roomCode];
-      const isExist = room.players.find(p => p.id === socket.id);
-      
-      if (!isExist) {
-        room.players.push({ id: socket.id, name: playerName, score: 0 });
-      }
+        const room = rooms[roomCode];
+        const isExist = room.players.find((p) => p.id === socket.id);
 
-      console.log(`👤 Player [${playerName}] joined Room: ${roomCode} [${room.status}]`);
-      
-      // Kirim info status terbaru ke siswa yang baru join
-      socket.emit("lobbyInfo", { 
-        status: room.status,
-        players: room.players 
-      });
+        if (!isExist) {
+          room.players.push({ id: socket.id, name: playerName, score: 0 });
+        }
 
-      // Update daftar pemain ke semua orang (termasuk Host)
-      io.to(roomCode).emit("updatePlayerList", room.players);
-    });
+        console.log(
+          `👤 Player [${playerName}] joined Room: ${roomCode} [${room.status}]`,
+        );
 
+        // Kirim info status terbaru ke siswa yang baru join
+        socket.emit("lobbyInfo", {
+          status: room.status,
+          players: room.players,
+        });
+
+        // Update daftar pemain ke semua orang (termasuk Host)
+        io.to(roomCode).emit("updatePlayerList", room.players);
+      },
+    );
 
     // 3. 📈 UPDATE SCORE: Live update saat siswa menjawab benar
-    socket.on("updateScore", ({ code, score }: { code: string; score: number }) => {
-      const roomCode = code?.toUpperCase().trim();
-      const room = rooms[roomCode];
+    socket.on(
+      "updateScore",
+      ({ code, score }: { code: string; score: number }) => {
+        const roomCode = code?.toUpperCase().trim();
+        const room = rooms[roomCode];
 
-      if (room) {
-        const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex !== -1) {
-          room.players[playerIndex].score = score;
-          console.log(`📈 [${roomCode}] ${room.players[playerIndex].name}: ${score} pts`);
+        if (room) {
+          const playerIndex = room.players.findIndex((p) => p.id === socket.id);
+          if (playerIndex !== -1) {
+            room.players[playerIndex].score = score;
+            console.log(
+              `📈 [${roomCode}] ${room.players[playerIndex].name}: ${score} pts`,
+            );
 
-          // Kirim balik ke Guru agar ranking berubah real-time
-          io.to(roomCode).emit("updatePlayerList", room.players);
+            // Kirim balik ke Guru agar ranking berubah real-time
+            io.to(roomCode).emit("updatePlayerList", room.players);
+          }
         }
-      }
-    });
+      },
+    );
 
     // 4. 🚀 START GAME: Guru menekan tombol Start
     socket.on("startGame", (code: string) => {

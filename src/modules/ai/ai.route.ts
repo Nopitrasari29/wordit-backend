@@ -12,27 +12,35 @@ Hanya bisa diakses oleh TEACHER dan ADMIN.
 Memenuhi kriteria keamanan dokumen SKPL.
 */
 router.post(
-"/generate-quiz",
-authMiddleware(["TEACHER", "ADMIN"]),
-aiController.generateQuiz
+  "/generate-quiz",
+  authMiddleware(["TEACHER", "ADMIN"]),
+  aiController.generateQuiz,
 );
 /**
 📖 GET FEEDBACK
 Bisa diakses oleh semua pengguna yang sudah login (STUDENT, TEACHER, ADMIN).
 */
 router.post(
-"/get-feedback",
-authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
-aiController.getAIFeedback
+  "/get-feedback",
+  authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+  aiController.getAIFeedback,
 );
 /**
 📝 SMART GRADING (BE-17)
 Digunakan oleh Student saat mensubmit esai, atau Teacher saat mengevaluasi.
 */
 router.post(
-"/grade",
-authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
-aiController.gradeEssayAnswer
+  "/grade",
+  authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+  aiController.gradeEssayAnswer,
+);
+/**
+📊 AI QUOTA MONITORING (AI-09)
+Hanya bisa diakses oleh ADMIN untuk memantau penggunaan API harian.
+*/
+router.get(
+  "/quota-status",
+  authMiddleware(["ADMIN"]),
+  aiController.getQuotaStatus,
 );
 export default router;
-

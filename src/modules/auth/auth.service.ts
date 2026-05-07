@@ -14,7 +14,9 @@ export const register = async (data: RegisterInput) => {
   }
 
   // Cek email sudah ada atau belum
-  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+  const existing = await prisma.user.findUnique({
+    where: { email: data.email },
+  });
   if (existing) throw new Error("Email already registered");
 
   const hashedPassword = await hashPassword(data.password);
@@ -66,7 +68,6 @@ export const register = async (data: RegisterInput) => {
   // 🚀 TRIGGER TELEGRAM BOT & WEB NOTIF (JIKA ROLE TEACHER)
   // =========================================================
   if (user.role === Role.TEACHER) {
-
     // 📝 SYSTEM LOG TEACHER REGISTER
     await createSystemLog({
       action: "TEACHER_REGISTER",
@@ -81,7 +82,7 @@ export const register = async (data: RegisterInput) => {
       name: user.name,
       email: user.email,
       educationLevel: user.educationLevel,
-    }).catch(err => console.error("Gagal trigger bot Telegram:", err));
+    }).catch((err) => console.error("Gagal trigger bot Telegram:", err));
 
     // 2. Kirim notif Real-time ke Dashboard Admin via Socket (BE-20)
     try {
@@ -93,11 +94,13 @@ export const register = async (data: RegisterInput) => {
         user: {
           id: user.id,
           name: user.name,
-          email: user.email
-        }
+          email: user.email,
+        },
       });
 
-      console.log(`📡 Socket emit: Notifikasi pendaftaran ${user.name} terkirim ke web Admin.`);
+      console.log(
+        `📡 Socket emit: Notifikasi pendaftaran ${user.name} terkirim ke web Admin.`,
+      );
     } catch (err) {
       console.error("❌ Gagal emit socket notif admin:", err);
     }
@@ -116,7 +119,7 @@ export const register = async (data: RegisterInput) => {
   const token = generateToken({
     userId: user.id,
     email: data.email,
-    role: user.role
+    role: user.role,
   });
 
   return { user, token };
@@ -124,7 +127,7 @@ export const register = async (data: RegisterInput) => {
 
 export const login = async (data: LoginInput) => {
   const user = await prisma.user.findUnique({
-    where: { email: data.email }
+    where: { email: data.email },
   });
 
   if (!user) throw new Error("Invalid email or password");
@@ -139,7 +142,7 @@ export const login = async (data: LoginInput) => {
     user.approvalStatus === ApprovalStatus.PENDING
   ) {
     throw new Error(
-      "Akun kamu masih menunggu persetujuan Admin. Mohon tunggu konfirmasi melalui email."
+      "Akun kamu masih menunggu persetujuan Admin. Mohon tunggu konfirmasi melalui email.",
     );
   }
 
@@ -148,7 +151,7 @@ export const login = async (data: LoginInput) => {
     user.approvalStatus === ApprovalStatus.REJECTED
   ) {
     throw new Error(
-      "Akun kamu ditolak oleh Admin. Hubungi administrator untuk informasi lebih lanjut."
+      "Akun kamu ditolak oleh Admin. Hubungi administrator untuk informasi lebih lanjut.",
     );
   }
 
@@ -165,7 +168,7 @@ export const login = async (data: LoginInput) => {
   const token = generateToken({
     userId: user.id,
     email: user.email,
-    role: user.role
+    role: user.role,
   });
 
   return {
@@ -176,6 +179,7 @@ export const login = async (data: LoginInput) => {
       role: user.role,
       approvalStatus: user.approvalStatus,
       educationLevel: user.educationLevel,
+      photoUrl: user.photoUrl ?? null,
     },
     token,
   };
@@ -183,7 +187,7 @@ export const login = async (data: LoginInput) => {
 
 export const logout = async (userId: string) => {
   const user = await prisma.user.findUnique({
-    where: { id: userId }
+    where: { id: userId },
   });
 
   if (!user) throw new Error("User not found");
