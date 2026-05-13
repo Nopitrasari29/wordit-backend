@@ -238,7 +238,7 @@ export const finishGame = async (req: Request, res: Response, next: NextFunction
     }
 
     const id = req.params.id as string;
-    const { scoreValue, maxScore, accuracy, timeSpent, answersDetail } = req.body;
+    const { scoreValue, maxScore, accuracy, timeSpent, answersDetail, ltik } = req.body;
 
     console.log(`[FINISH_GAME] User ${userId} finishing game ${id}, score: ${scoreValue}`);
 
@@ -248,6 +248,7 @@ export const finishGame = async (req: Request, res: Response, next: NextFunction
       accuracy: accuracy ?? 0,
       timeSpent: timeSpent ?? 0,
       answersDetail: answersDetail ?? [],
+      ltik: ltik // Pass LTI Token if exists
     });
 
     res.status(200).json(successResponse(result, "Skor berhasil disimpan!"));

@@ -34,12 +34,18 @@ app.use((req, res, next) => {
 // ─── STATIC FILES ───────────────────────────────────────────────────
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+import { ltiProvider } from "./config/lti"; // ✅ IMPORT LTI PROVIDER
+
 // ─── REGISTER ROUTES ────────────────────────────────────────────────
 app.use("/api/auth", authRoute);
 app.use("/api/users", userRoute);
 app.use("/api/games", gameRoute);
 app.use("/api/ai", aiRoute);
 app.use("/api/analytics", analyticsRoute); // ✅ 2. DAFTARKAN ROUTE ANALYTICS DI SINI
+
+// ─── LTI ROUTER ─────────────────────────────────────────────────────
+// Menyambungkan rute bawaan ltijs (/lti/launch, /lti/login, dll)
+app.use("/lti", ltiProvider.app);
 
 // Health Check Route
 app.get("/", (req, res) => {

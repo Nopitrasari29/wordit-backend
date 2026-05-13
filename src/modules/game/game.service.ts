@@ -363,6 +363,7 @@ export const finishGame = async (
     accuracy: number;
     timeSpent: number;
     answersDetail: any[];
+    ltik?: string;
   },
 ) => {
   const session = await prisma.gameSession.findFirst({
@@ -579,6 +580,28 @@ export const finishGame = async (
   console.log(
     `✅ Game finished: User ${userId}, Validated Score ${Math.round(finalScore)}, Accuracy ${finalAccuracy}%`,
   );
+
+  // =========================================================================
+  // 🎓 MOODLE LTI GRADE PASSBACK INTERCEPTOR
+  // =========================================================================
+  if (payload.ltik) {
+    console.log(`🎓 [LTI] LTI Token terdeteksi! Mempersiapkan sinkronisasi nilai ke Moodle...`);
+    // TODO: Implementasi LTIJS ScorePublish akan ditaruh di sini nanti
+    /*
+    try {
+      await ltijs.Grade.ScorePublish(payload.ltik, {
+        scoreGiven: Math.round(finalScore),
+        scoreMaximum: maxPossibleScore,
+        activityProgress: 'Completed',
+        gradingProgress: 'FullyGraded'
+      });
+      console.log(`✅ [LTI] Berhasil mengirim nilai ${Math.round(finalScore)} ke Moodle Gradebook!`);
+    } catch (e) {
+      console.error(`❌ [LTI] Gagal mengirim nilai ke Moodle:`, e);
+    }
+    */
+  }
+
   return { session: closedSession, result };
 };
 

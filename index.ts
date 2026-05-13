@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { initSocket } from "./src/socket";
 import "./src/config/redis"; // ✅ Pastikan Redis siap untuk caching leaderboard
 import { startTelegramBot } from "./src/utils/telegram.service"; // ✅ IMPORT TELEGRAM BOT
+import { ltiProvider } from "./src/config/lti"; // ✅ IMPORT LTIJS PROVIDER
 
 // 🎯 Ambil port dari env dengan fallback ke 5000 (standar Node.js)
 const port = env?.port ? parseInt(env.port) : 5000;
@@ -19,19 +20,34 @@ initSocket(server);
 // 3. Nyalakan Telegram Bot Approval System
 startTelegramBot();
 
-// 4. Nyalakan Server
-server.listen(port, () => {
-  console.log(`
-  ==================================================
-  🚀 WordIT API + WebSocket is Live!
-  📡 URL         : http://localhost:${port}
-  🛠️  Environment : ${process.env.NODE_ENV || 'development'}
-  🎮 Real-time   : Socket.io Initialized
-  🤖 Telegram    : Bot Approval Standby
-  ==================================================
-  `);
-});
+// Fungsi async untuk menyalakan server dan database tambahan
+const startServer = async () => {
+  try {
+    // 4. Deploy LTIJS (Konek ke MongoDB khusus LTI)
+    console.log("⏳ Menghubungkan ke MongoDB LTI...");
+    await ltiProvider.deploy({ serverless: true });
+    console.log("✅ LTIJS berhasil koneksi ke Database!");
 
+    // 5. Nyalakan Server Express + Socket
+    server.listen(port, () => {
+      console.log(`
+      ==================================================
+      🚀 WordIT API + WebSocket is Live!
+      📡 URL         : http://localhost:${port}
+      🛠️  Environment : ${process.env.NODE_ENV || 'development'}
+      🎮 Real-time   : Socket.io Initialized
+      🤖 Telegram    : Bot Approval Standby
+      📚 Moodle LTI  : LTIJS Provider Ready
+      ==================================================
+      `);
+    });
+  } catch (err) {
+    console.error("❌ Gagal menyalakan server:", err);
+    process.exit(1);
+  }
+};
+
+startServer();
 // ─── PENANGANAN ERROR GLOBAL ─────────────────────────────────────────
 
 // Mencegah server mati total jika ada error asinkron yang tidak tertangkap

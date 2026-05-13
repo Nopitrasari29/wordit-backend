@@ -217,8 +217,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string) => {
   const results = await prisma.result.findMany({
     where: {
       session: {
-        gameId: { in: gameIds },
-        user: { role: "STUDENT" }, // Filter hanya role STUDENT
+        gameId: { in: gameIds }
       },
     },
     include: {
