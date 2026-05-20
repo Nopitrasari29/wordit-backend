@@ -58,6 +58,10 @@ export const createGameSchema = z.object({
   templateType: TemplateTypeEnum,
   educationLevel: EducationLevelEnum,
   difficulty: DifficultyLevelEnum.default("MEDIUM"),
+  classGrade: z.string().optional(),
+  subject: z.string().optional(),
+  chapter: z.string().optional(),
+  topic: z.string().optional(),
   thumbnailUrl: z.string().optional(),
   // ✅ Penambahan field ini memperbaiki error 'Property does not exist' di game.service.ts
   isPublished: z.boolean().default(false).optional(),

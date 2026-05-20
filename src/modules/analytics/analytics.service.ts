@@ -1,4 +1,5 @@
 import { prisma } from "../../config/database";
+import { Prisma, EducationLevel } from "@prisma/client";
 
 // =====================================================================
 // 🏅 BADGE COMPUTATION (FE-19 Gamification)
@@ -77,6 +78,7 @@ export const getStudentAnalytics = async (userId: string) => {
       timeSpent: true,
       scoreValue: true, // 🛠️ Tambahkan SUM untuk kalkulasi XP di Frontend
     },
+    _max: { scoreValue: true },
     _count: { id: true },
   });
 
@@ -102,13 +104,46 @@ export const getStudentAnalytics = async (userId: string) => {
     recentForBadge,
   );
 
+  const lowestScore = await prisma.result.aggregate({
+    where: { session: { userId: userId } },
+    _min: { scoreValue: true }
+  });
+
+  // Calculate most frequent missed question
+  const allResults = await prisma.result.findMany({
+    where: { session: { userId: userId } },
+    select: { answersDetail: true }
+  });
+
+  const questionMistakes: Record<string, number> = {};
+  allResults.forEach(res => {
+    const answers = (res.answersDetail as any[]) || [];
+    answers.forEach(ans => {
+      if (ans.isCorrect === false && ans.question) {
+        questionMistakes[ans.question] = (questionMistakes[ans.question] || 0) + 1;
+      }
+    });
+  });
+
+  let mostFrequentMistake = null;
+  let maxMistakes = 0;
+  for (const [q, count] of Object.entries(questionMistakes)) {
+    if (count > maxMistakes) {
+      maxMistakes = count;
+      mostFrequentMistake = q;
+    }
+  }
+
   return {
     overview: {
       totalGamesPlayed: stats._count.id || 0,
+      highestScore: stats._max.scoreValue || 0,
+      lowestScore: lowestScore._min.scoreValue || 0,
       averageScore: Math.round(stats._avg.scoreValue || 0),
       averageAccuracy: Math.round(stats._avg.accuracy || 0),
       totalXp: stats._sum.scoreValue || 0, // 🛠️ Kirim total akumulasi skor ke FE
       totalTimeSpentSeconds: stats._sum.timeSpent || 0,
+      mostFrequentMistake: mostFrequentMistake
     },
     recentHistory: recentHistory.map((session) => ({
       sessionId: session.id,
@@ -205,9 +240,20 @@ export const getGameAnalyticsForTeacher = async (
   };
 };
 
-export const getTeacherClassesAnalytics = async (teacherId: string) => {
+export const getTeacherClassesAnalytics = async (teacherId: string, educationLevel?: string, classGrade?: string) => {
+  const whereFilter: Prisma.GameWhereInput = { creatorId: teacherId };
+  if (educationLevel && educationLevel !== "ALL") {
+    whereFilter.educationLevel = educationLevel as EducationLevel;
+  }
+  if (classGrade && classGrade !== "ALL") {
+    whereFilter.classGrade = {
+      contains: classGrade,
+      mode: "insensitive",
+    };
+  }
+
   const games = await prisma.game.findMany({
-    where: { creatorId: teacherId },
+    where: whereFilter,
     select: { id: true, title: true },
   });
 
@@ -217,7 +263,8 @@ export const getTeacherClassesAnalytics = async (teacherId: string) => {
   const results = await prisma.result.findMany({
     where: {
       session: {
-        gameId: { in: gameIds }
+        gameId: { in: gameIds },
+        user: { role: "STUDENT" }
       },
     },
     include: {
@@ -230,12 +277,13 @@ export const getTeacherClassesAnalytics = async (teacherId: string) => {
     },
   });
 
-  // ✅ FIX FE-20: Auto-grouping berdasarkan regex nama pemain (3A_Budi → grup 3A)
-  // Jika nama tidak mengandung underscore, masuk grup "Umum"
+  // ✅ FIX FE-20: Auto-grouping berdasarkan format "kelas_nama", dipisah dengan "_" atau " "
+  // Jika tidak bisa di-group, masuk grup "UMUM"
   const extractGroup = (playerName: string): string => {
-    const match = playerName.match(/^([^_]+)_/);
+    // Regex for grabbing anything before the first underscore or space, non-greedy
+    const match = playerName.match(/^(.+?)[_\s]/);
     const groupName = match?.[1]?.trim();
-    return groupName ? groupName.toUpperCase() : "Umum";
+    return groupName ? groupName.toUpperCase() : "UMUM";
   };
 
   // Kelompokkan hasil berdasarkan prefix nama pemain
@@ -348,7 +396,7 @@ export const getAdminStats = async () => {
       // @ts-ignore
       systemLogs = await (prisma as any).systemLog.findMany({
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: 5,
       });
     }
   } catch (e: any) {
@@ -363,5 +411,72 @@ export const getAdminStats = async () => {
     totalGames,
     totalSessions,
     systemLogs,
+  };
+};
+
+export const getAdminLogs = async (params: {
+  page?: number;
+  limit?: number;
+  action?: string;
+  search?: string;
+  timeRange?: string;
+}) => {
+  const page = Number(params.page) || 1;
+  const limit = Number(params.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  const where: any = {};
+  if (params.action) {
+    where.action = params.action;
+  }
+
+  if (params.timeRange && params.timeRange !== "ALL") {
+    const now = new Date();
+    let startDate: Date | null = null;
+    if (params.timeRange === "yesterday") {
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } else if (params.timeRange === "week") {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (params.timeRange === "month") {
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else if (params.timeRange === "2months") {
+      startDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    }
+
+    if (startDate) {
+      where.createdAt = {
+        gte: startDate,
+      };
+    }
+  }
+  if (params.search) {
+    where.OR = [
+      { action: { contains: params.search, mode: 'insensitive' } },
+      { userName: { contains: params.search, mode: 'insensitive' } },
+      { details: { contains: params.search, mode: 'insensitive' } },
+    ];
+  }
+
+  // @ts-ignore
+  const [logs, total] = await Promise.all([
+    // @ts-ignore
+    prisma.systemLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    // @ts-ignore
+    prisma.systemLog.count({ where }),
+  ]);
+
+  return {
+    logs,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
   };
 };

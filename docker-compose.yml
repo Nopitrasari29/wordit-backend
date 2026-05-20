@@ -36,6 +36,18 @@ services:
     networks:
       - wordit-network
 
+  # 🍃 DATABASE LTI: MongoDB Local
+  mongodb:
+    image: mongo:latest
+    container_name: wordit-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - wordit_mongo_data:/data/db
+    networks:
+      - wordit-network
+
 # 🌐 JARINGAN: Agar antar service bisa saling mengobrol
 networks:
   wordit-network:
@@ -44,4 +56,6 @@ networks:
 # 📦 PENYIMPANAN: Definisi Volume Jangka Panjang
 volumes:
   wordit_postgres_data:
+    driver: local
+  wordit_mongo_data:
     driver: local

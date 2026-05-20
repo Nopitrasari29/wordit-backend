@@ -9,6 +9,7 @@ import { generateShareCode } from "../../utils/share-code";
 import { redis } from "../../config/redis";
 import { getIO } from "../../socket";
 import { getAdaptiveDifficulty } from "../analytics/analytics.service";
+import { createSystemLog } from "../../utils/system-logger";
 
 // ═══════════════ IMPORT SEMUA GAME ENGINE ═══════════════
 import { AnagramService } from "./anagram/anagram.service";
@@ -95,20 +96,40 @@ export const getGameByCode = async (shareCode: string) => {
 };
 
 export const createGame = async (userId: string, data: CreateGameInput) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+
+  if (!user.educationLevels.includes(data.educationLevel as EducationLevel)) {
+    throw new Error("Anda tidak memiliki akses untuk membuat game di jenjang ini.");
+  }
+
   const shareCode = generateShareCode();
-  return await prisma.game.create({
+  const createdGame = await prisma.game.create({
     data: {
       title: data.title,
       description: data.description,
       templateType: data.templateType as TemplateType,
       educationLevel: data.educationLevel as EducationLevel,
       difficulty: data.difficulty,
+      classGrade: data.classGrade,
+      subject: data.subject,
+      chapter: data.chapter,
+      topic: data.topic,
       creatorId: userId,
       shareCode,
       gameJson: data.gameJson as Prisma.InputJsonValue,
       isPublished: data.isPublished || false,
     },
   });
+
+  await createSystemLog({
+    action: "CREATE_GAME",
+    details: `Game "${createdGame.title}" (${createdGame.templateType}) created for ${createdGame.educationLevel}`,
+    userId,
+    userName: user.name,
+  });
+
+  return createdGame;
 };
 
 export const updateGame = async (
@@ -120,15 +141,29 @@ export const updateGame = async (
   if (!game) throw new Error("Game not found");
   if (game.creatorId !== userId) throw new Error("Unauthorized");
 
-  return await prisma.game.update({
+  const updatedGame = await prisma.game.update({
     where: { id: gameId },
     data: {
       ...data,
+      classGrade: data.classGrade,
+      subject: data.subject,
+      chapter: data.chapter,
+      topic: data.topic,
       gameJson: data.gameJson
         ? (data.gameJson as Prisma.InputJsonValue)
         : undefined,
     },
   });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  await createSystemLog({
+    action: "UPDATE_GAME",
+    details: `Game "${updatedGame.title}" (${updatedGame.templateType}) updated`,
+    userId,
+    userName: user?.name || "Unknown",
+  });
+
+  return updatedGame;
 };
 
 export const deleteGame = async (gameId: string, userId: string) => {
@@ -161,6 +196,14 @@ export const deleteGame = async (gameId: string, userId: string) => {
     await tx.game.delete({ where: { id: gameId } });
   });
 
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  await createSystemLog({
+    action: "DELETE_GAME",
+    details: `Game "${game.title}" (${game.templateType}) deleted`,
+    userId,
+    userName: user?.name || "Unknown",
+  });
+
   return { message: "Game deleted successfully" };
 };
 
@@ -175,10 +218,20 @@ export const togglePublish = async (gameId: string, userId: string) => {
     dataToUpdate.shareCode = generateShareCode();
   }
 
-  return await prisma.game.update({
+  const updatedGame = await prisma.game.update({
     where: { id: gameId },
     data: dataToUpdate,
   });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  await createSystemLog({
+    action: "TOGGLE_PUBLISH",
+    details: `Game "${updatedGame.title}" ${isPublishing ? "published" : "unpublished"}`,
+    userId,
+    userName: user?.name || "Unknown",
+  });
+
+  return updatedGame;
 };
 
 export const getMyGames = async (userId: string) => {
@@ -547,6 +600,14 @@ export const finishGame = async (
       },
     });
 
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    await createSystemLog({
+      action: "FINISH_GAME",
+      details: `Student finished game "${game.title}" with score ${Math.round(finalScore)}/${maxPossibleScore} (${finalAccuracy}% accuracy)`,
+      userId,
+      userName: user?.name || "Unknown",
+    });
+
     return { session: newSession, result };
   }
 
@@ -601,6 +662,14 @@ export const finishGame = async (
     }
     */
   }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  await createSystemLog({
+    action: "FINISH_GAME",
+    details: `Student finished game "${game.title}" with score ${Math.round(finalScore)}/${maxPossibleScore} (${finalAccuracy}% accuracy)`,
+    userId,
+    userName: user?.name || "Unknown",
+  });
 
   return { session: closedSession, result };
 };

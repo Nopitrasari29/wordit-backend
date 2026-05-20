@@ -69,7 +69,8 @@ export const approveTeacher = async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await userService.approveTeacher(id, action as "APPROVE" | "REJECT");
+    const adminUserId = req.user?.userId;
+    const result = await userService.approveTeacher(id, action as "APPROVE" | "REJECT", adminUserId);
     const msg = action === "APPROVE"
       ? "Teacher berhasil di-approve"
       : "Teacher berhasil di-reject";
@@ -90,7 +91,8 @@ export const changeUserRole = async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await userService.changeUserRole(id, role as Role);
+    const adminUserId = req.user?.userId;
+    const result = await userService.changeUserRole(id, role as Role, adminUserId);
     res.status(200).json(successResponse(result, "Role berhasil diubah"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal mengubah role";
@@ -101,7 +103,8 @@ export const changeUserRole = async (req: Request, res: Response) => {
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params as { id: string };
-    const result = await userService.deleteUser(id);
+    const adminUserId = req.user?.userId;
+    const result = await userService.deleteUser(id, adminUserId);
     res.status(200).json(successResponse(result, "User deleted"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to delete user";

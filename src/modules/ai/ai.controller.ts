@@ -15,7 +15,7 @@ export const generateQuiz = async (req: Request, res: Response) => {
      * Menambahkan 'difficulty' sesuai dengan kriteria AI-10 (Adaptive Difficulty).
      * Default tingkat kesulitan adalah 'MEDIUM' jika tidak dikirim dari Frontend.
      */
-    const { topic, educationLevel, templateType, count, difficulty } = req.body;
+    const { topic, educationLevel, templateType, count, difficulty, classGrade, subject, chapter, topic: metadataTopic } = req.body;
 
     const quizData = await generateQuizContent(
       topic,
@@ -23,6 +23,7 @@ export const generateQuiz = async (req: Request, res: Response) => {
       templateType,
       count || 5,
       difficulty || "MEDIUM", // ✅ SINKRONISASI AI-10
+      { classGrade, subject, chapter, topic: metadataTopic }
     );
 
     return res.status(200).json({

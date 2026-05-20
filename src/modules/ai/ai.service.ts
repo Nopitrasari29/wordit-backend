@@ -41,92 +41,102 @@ export const getApiUsageStats = () => ({
   usagePercent: Math.round((dailyApiHits / QUOTA_CRITICAL_THRESHOLD) * 100),
 });
 
-const getSystemPrompt = (
-  educationLevel: string,
-  templateType: string,
-  count: number,
-  difficulty: string,
-  strictLevel: number = 1,
-): string => {
-  let formatInstruction = "";
+  const getSystemPrompt = (
+    educationLevel: string,
+    templateType: string,
+    count: number,
+    difficulty: string,
+    strictLevel: number = 1,
+    metadata?: { classGrade?: string, subject?: string, chapter?: string, topic?: string }
+  ): string => {
+    let formatInstruction = "";
 
-  let essayInstruction = "Pertanyaan terbuka.";
-  if (educationLevel === "SD") {
-    essayInstruction =
-      "Pertanyaan deskriptif yang sangat sederhana, mudah dibayangkan, dan ramah anak";
-  } else if (educationLevel === "SMP") {
-    essayInstruction =
-      "Pertanyaan yang meminta penjelasan alasan atau perbandingan dasar";
-  } else if (educationLevel === "SMA") {
-    essayInstruction =
-      "Pertanyaan terbuka yang memancing daya kritis dan analisis mendalam";
-  } else if (educationLevel === "UNIVERSITY") {
-    essayInstruction =
-      "Pertanyaan studi kasus atau teoritis tingkat lanjut yang membutuhkan evaluasi akademik";
-  }
+    let essayInstruction = "Pertanyaan terbuka.";
+    if (educationLevel === "SD") {
+      essayInstruction =
+        "Pertanyaan deskriptif yang sangat sederhana, mudah dibayangkan, dan ramah anak";
+    } else if (educationLevel === "SMP") {
+      essayInstruction =
+        "Pertanyaan yang meminta penjelasan alasan atau perbandingan dasar";
+    } else if (educationLevel === "SMA") {
+      essayInstruction =
+        "Pertanyaan terbuka yang memancing daya kritis dan analisis mendalam";
+    } else if (educationLevel === "UNIVERSITY") {
+      essayInstruction =
+        "Pertanyaan studi kasus atau teoritis tingkat lanjut yang membutuhkan evaluasi akademik";
+    }
 
-  // Penentuan struktur JSON output
-  switch (templateType) {
-    case "ANAGRAM":
-    case "HANGMAN":
-    case "WORD_SEARCH":
-      formatInstruction = `{ "template": "${templateType}", "words": [ { "word": "KATA_TARGET_HURUF_KAPITAL", "hint": "Petunjuk yang spesifik dan mendidik" } ] }`;
-      break;
-    case "FLASHCARD":
-      formatInstruction = `{ "template": "FLASHCARD", "cards": [ { "front": "Istilah/Konsep", "back": "Definisi yang jelas dan komprehensif", "hint": "Petunjuk singkat" } ] }`;
-      break;
-    case "MAZE_CHASE":
-    case "SPIN_THE_WHEEL":
-    case "MULTIPLE_CHOICE":
-      formatInstruction = `{ "template": "${templateType}", "questions": [ { "question": "Pertanyaan yang sesuai dengan tingkat ${educationLevel}", "options": ["Jawaban Benar", "Pengecoh Logis 1", "Pengecoh Logis 2", "Pengecoh Logis 3"], "correctAnswer": "Jawaban Benar", "hint": "Petunjuk" } ] }\n\n⚠️ PENTING: Untuk 'options', JANGAN gunakan huruf A/B/C/D, melainkan tulis langsung isi jawabannya yang faktual!`;
-      break;
-    case "TRUE_FALSE":
-      formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "Pernyataan faktual yang harus dinilai benar atau salahnya oleh siswa", "correctAnswer": true, "hint": "Penjelasan singkat fakta sebenarnya" } ] }`;
-      break;
-    case "MATCHING":
-      // AI-08: Prompt MATCHING diperkuat dengan contoh konkret dan larangan eksplisit
-      formatInstruction = `{
-        "template": "MATCHING",
-        "pairs": [
-          { "leftItem": "Contoh: Fotosintesis", "rightItem": "Contoh: Proses pembuatan makanan oleh tumbuhan", "hint": "Petunjuk opsional" },
-          { "leftItem": "Contoh: Mitokondria", "rightItem": "Contoh: Organel penghasil energi sel", "hint": "Petunjuk opsional" }
-        ]
-      }
+    // Context metadata
+    let contextInfo = `Jenjang: ${educationLevel}`;
+    if (metadata?.classGrade) contextInfo += `\nKelas: ${metadata.classGrade}`;
+    if (metadata?.subject) contextInfo += `\nMata Pelajaran: ${metadata.subject}`;
+    if (metadata?.chapter) contextInfo += `\nBab: ${metadata.chapter}`;
+    if (metadata?.topic) contextInfo += `\nTopik Spesifik: ${metadata.topic}`;
 
-      ⚠️ PERINGATAN KERAS STRUKTUR MATCHING:
-      - WAJIB gunakan PERSIS kunci "leftItem" dan "rightItem" (huruf kecil, camelCase).
-      - DILARANG KERAS menggunakan kunci lain: "left", "right", "pair", "term", "definition", "question", "answer", "front", "back", "kiri", "kanan".
-      - Setiap "leftItem" HARUS berpasangan logis dan unik dengan "rightItem"-nya.
-      - Semua nilai "rightItem" HARUS berbeda satu sama lain (tidak boleh duplikat).
-      - Hasilkan tepat ${count} objek di dalam array "pairs".`;
-      break;
-    case "ESSAY":
-      formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "${essayInstruction}", "keywords": ["kunci1", "kunci2", "kunci3", "kunci4"], "hint": "Arahan cara menjawab" } ] }\n\n⚠️ PENTING: 'keywords' harus berisi 3-5 kata kunci teknis/penting yang WAJIB ada di jawaban siswa agar nilainya sempurna.`;
-      break;
-    default:
-      formatInstruction = `{ "error": "Template tidak dikenal" }`;
-  }
+    // Penentuan struktur JSON output
+    switch (templateType) {
+      case "ANAGRAM":
+      case "HANGMAN":
+      case "WORD_SEARCH":
+        formatInstruction = `{ "template": "${templateType}", "words": [ { "word": "KATA_TARGET_HURUF_KAPITAL", "hint": "Petunjuk yang spesifik dan mendidik sesuai topik" } ] }`;
+        break;
+      case "FLASHCARD":
+        formatInstruction = `{ "template": "FLASHCARD", "cards": [ { "front": "Istilah/Konsep", "back": "Definisi yang jelas dan komprehensif", "hint": "Petunjuk singkat" } ] }`;
+        break;
+      case "MAZE_CHASE":
+      case "SPIN_THE_WHEEL":
+      case "MULTIPLE_CHOICE":
+        formatInstruction = `{ "template": "${templateType}", "questions": [ { "question": "Pertanyaan yang sesuai dengan tingkat ${educationLevel}", "options": ["Jawaban Benar", "Pengecoh Logis 1", "Pengecoh Logis 2", "Pengecoh Logis 3"], "correctAnswer": "Jawaban Benar", "hint": "Petunjuk" } ] }\n\n⚠️ PENTING: Untuk 'options', JANGAN gunakan huruf A/B/C/D, melainkan tulis langsung isi jawabannya yang faktual!`;
+        break;
+      case "TRUE_FALSE":
+        formatInstruction = `{ "template": "TRUE_FALSE", "questions": [ { "question": "Pernyataan faktual yang harus dinilai benar atau salahnya oleh siswa", "correctAnswer": true, "hint": "Penjelasan singkat fakta sebenarnya" } ] }`;
+        break;
+      case "MATCHING":
+        formatInstruction = `{
+          "template": "MATCHING",
+          "pairs": [
+            { "leftItem": "Contoh: Fotosintesis", "rightItem": "Contoh: Proses pembuatan makanan oleh tumbuhan", "hint": "Petunjuk opsional" },
+            { "leftItem": "Contoh: Mitokondria", "rightItem": "Contoh: Organel penghasil energi sel", "hint": "Petunjuk opsional" }
+          ]
+        }
 
-  return `Anda pakar kurikulum pendidikan nasional jenjang ${educationLevel}.
-  Tugas: Hasilkan kuis Bahasa Indonesia tipe ${templateType} sebanyak TEPAT ${count} soal.
+        ⚠️ PERINGATAN KERAS STRUKTUR MATCHING:
+        - WAJIB gunakan PERSIS kunci "leftItem" dan "rightItem" (huruf kecil, camelCase).
+        - DILARANG KERAS menggunakan kunci lain.
+        - Setiap "leftItem" HARUS berpasangan logis dan unik dengan "rightItem"-nya.
+        - Semua nilai "rightItem" HARUS berbeda satu sama lain (tidak boleh duplikat).
+        - Hasilkan tepat ${count} objek di dalam array "pairs".`;
+        break;
+      case "ESSAY":
+        formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "${essayInstruction}", "keywords": ["kunci1", "kunci2", "kunci3", "kunci4"], "hint": "Arahan cara menjawab" } ] }\n\n⚠️ PENTING: 'keywords' harus berisi 3-5 kata kunci teknis/penting yang WAJIB ada di jawaban siswa agar nilainya sempurna.`;
+        break;
+      default:
+        formatInstruction = `{ "error": "Template tidak dikenal" }`;
+    }
 
-  TINGKAT KESULITAN (AI-10):
-  Gunakan tingkat kesulitan: ${difficulty.toUpperCase()}.
-  
-  PANDUAN BAHASA JENJANG ${educationLevel} (AI-03):
-  - SD: Gunakan bahasa yang sangat sederhana, konkret, hindari istilah asing/rumit.
-  - SMP: Gunakan bahasa semi-formal, mulai perkenalkan konsep abstrak dasar.
-  - SMA: Gunakan bahasa formal, analitis, dan istilah ilmiah/teknis.
-  - UNIVERSITY: Gunakan terminologi akademik level lanjut.
+    return `Anda pakar kurikulum pendidikan nasional jenjang ${educationLevel}.
+    Tugas: Hasilkan kuis edukatif tipe ${templateType} sebanyak TEPAT ${count} soal.
 
-  ⚠️ ATURAN MUTLAK (STRICT LEVEL ${strictLevel}):
-  - JANGAN HALUSINASI. JAWABAN HARUS FAKTUAL DAN BAKU (KBBI).
-  - JUMLAH SOAL: Hasilkan TEPAT ${count} butir soal di dalam array. Tidak boleh kurang atau lebih!
-  - OUTPUT: HANYA JSON murni tanpa penjelasan atau markdown.
+    KONTEKS MATERI:
+    ${contextInfo}
 
-  STRUKTUR WAJIB:
-  ${formatInstruction}`;
-};
+    TINGKAT KESULITAN (AI-10):
+    Gunakan tingkat kesulitan: ${difficulty.toUpperCase()}.
+    
+    PANDUAN BAHASA JENJANG ${educationLevel} (AI-03):
+    - SD: Gunakan bahasa yang sangat sederhana, konkret, hindari istilah asing/rumit.
+    - SMP: Gunakan bahasa semi-formal, mulai perkenalkan konsep abstrak dasar.
+    - SMA: Gunakan bahasa formal, analitis, dan istilah ilmiah/teknis.
+    - UNIVERSITY: Gunakan terminologi akademik level lanjut.
+
+    ⚠️ ATURAN MUTLAK (STRICT LEVEL ${strictLevel}):
+    - JANGAN HALUSINASI. JAWABAN HARUS FAKTUAL DAN BAKU.
+    - JUMLAH SOAL: Hasilkan TEPAT ${count} butir soal di dalam array. Tidak boleh kurang atau lebih!
+    - OUTPUT: HANYA JSON murni tanpa penjelasan atau markdown.
+
+    STRUKTUR WAJIB:
+    ${formatInstruction}`;
+  };
 
 /**
  * Menghitung jumlah item dalam respons AI
@@ -338,6 +348,7 @@ export const generateQuizContent = async (
   templateType: string,
   count: number,
   difficulty: string = "MEDIUM",
+  metadata?: { classGrade?: string, subject?: string, chapter?: string, topic?: string }
 ) => {
   console.log(
     `[AI] Request -> ${templateType} | ${educationLevel} | Count: ${count} | Level: ${difficulty}`,
@@ -358,8 +369,10 @@ export const generateQuizContent = async (
         count,
         difficulty,
         attempts + 1,
+        metadata
       );
-      const userPrompt = `Topik: ${topic}. Buatkan kuis edukatif kognitif tepat ${count} soal.`;
+      const contextualHint = metadata?.topic ? metadata.topic : topic;
+      const userPrompt = `Topik Utama: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Buatkan kuis edukatif kognitif tepat ${count} soal.`;
 
       const res = await getGroqResponse(systemPrompt, userPrompt);
       const data = await processAiResponse(res || "", "groq");
@@ -405,10 +418,12 @@ export const generateQuizContent = async (
       count,
       difficulty,
       3,
+      metadata
     );
+    const contextualHint = metadata?.topic ? metadata.topic : topic;
     const res = await getGeminiResponse(
       systemPrompt,
-      `Topik: ${topic}. Hasilkan tepat ${count} soal dalam format JSON.`,
+      `Topik: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`,
     );
     const data = await processAiResponse(res || "", "gemini");
 

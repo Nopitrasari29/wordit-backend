@@ -32,9 +32,9 @@ export const register = async (data: RegisterInput) => {
       password: hashedPassword,
       role: data.role as Role,
       approvalStatus,
-      educationLevel: data.educationLevel
-        ? (data.educationLevel as EducationLevel)
-        : undefined,
+      educationLevels: data.educationLevels
+        ? data.educationLevels
+        : [],
       profile: {
         create: {
           bio: "Halo, saya pengguna baru WordIT!",
@@ -49,7 +49,7 @@ export const register = async (data: RegisterInput) => {
       email: true,
       role: true,
       approvalStatus: true,
-      educationLevel: true,
+      educationLevels: true,
       createdAt: true,
     },
   });
@@ -81,7 +81,7 @@ export const register = async (data: RegisterInput) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      educationLevel: user.educationLevel,
+      educationLevels: user.educationLevels,
     }).catch((err) => console.error("Gagal trigger bot Telegram:", err));
 
     // 2. Kirim notif Real-time ke Dashboard Admin via Socket (BE-20)
@@ -178,7 +178,7 @@ export const login = async (data: LoginInput) => {
       email: user.email,
       role: user.role,
       approvalStatus: user.approvalStatus,
-      educationLevel: user.educationLevel,
+      educationLevels: user.educationLevels,
       photoUrl: user.photoUrl ?? null,
     },
     token,

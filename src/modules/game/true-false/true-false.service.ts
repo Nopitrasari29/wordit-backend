@@ -7,14 +7,14 @@ export class TrueFalseService {
     }
 
     static calculateScore(payload: any, gameJson?: any): number {
-        const baseScorePerQuestion = 50; // Skor agak lebih kecil karena kesulitannya 50:50
-        const accuracy = payload.accuracy || 0;
-        const timeSpent = payload.timeSpent || 0;
-
-        let score = Math.round((baseScorePerQuestion * accuracy) / 100);
+        const correctAnswers = payload.answersDetail?.filter((ans: any) =>
+            TrueFalseService.verifyAnswer(gameJson, ans.questionIndex, ans.selectedAnswer)
+        ).length || 0;
+        let score = correctAnswers * 100;
 
         // Bonus tambahan untuk True/False jika dijawab dengan sangat cepat (refleks bagus)
-        if (accuracy > 80 && timeSpent < 15) {
+        const timeSpent = payload.timeSpent || 0;
+        if (payload.accuracy > 80 && timeSpent < 15) {
             score += 20;
         }
         return score;

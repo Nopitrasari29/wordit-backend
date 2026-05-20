@@ -10,7 +10,7 @@ export class MatchingService {
     }
 
     static calculateScore(payload: any, gameJson?: any): number {
-        const scorePerMatch = 30;
+        const scorePerMatch = 100;
         const correctMatches = payload.answers?.filter((a: any) => a.isCorrect === true).length || 0;
 
         let totalScore = correctMatches * scorePerMatch;

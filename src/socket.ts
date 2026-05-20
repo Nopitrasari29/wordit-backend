@@ -78,6 +78,11 @@ export const initSocket = (httpServer: HttpServer) => {
 
         // Update daftar pemain ke semua orang (termasuk Host)
         io.to(roomCode).emit("updatePlayerList", room.players);
+
+        // ✅ FIX (Late Join): Jika status room sudah "playing", beritahu siswa ini agar langsung mulai
+        if (room.status === "playing") {
+          socket.emit("gameStarted", roomCode);
+        }
       },
     );
 

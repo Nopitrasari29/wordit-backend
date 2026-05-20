@@ -1,20 +1,20 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 export const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
-  educationLevel: z.enum(["SD", "SMP", "SMA", "UNIVERSITY"]).optional(),
+  educationLevels: z.array(z.enum(["SD", "SMP", "SMA", "UNIVERSITY"])).optional(),
 }).refine(
   (data) => {
-    // Teacher WAJIB isi educationLevel
-    if (data.role === "TEACHER" && !data.educationLevel) return false;
+    // Teacher WAJIB isi educationLevels
+    if (data.role === "TEACHER" && (!data.educationLevels || data.educationLevels.length === 0)) return false;
     return true;
   },
   {
-    message: "Teacher wajib memilih satu jenjang pendidikan",
-    path: ["educationLevel"],
+    message: "Teacher wajib memilih setidaknya satu jenjang pendidikan",
+    path: ["educationLevels"],
   }
 );
 

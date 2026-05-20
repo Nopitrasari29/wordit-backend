@@ -7,10 +7,9 @@ export class MultipleChoiceService {
     }
 
     static calculateScore(payload: any, gameJson?: any): number {
-        const baseScorePerQuestion = 100;
-        const accuracy = payload.accuracy || 0;
-        // Semakin akurat, skor semakin besar
-        let score = Math.round((baseScorePerQuestion * accuracy) / 100);
-        return score;
+        const correctAnswers = payload.answersDetail?.filter((ans: any) =>
+            MultipleChoiceService.verifyAnswer(gameJson, ans.questionIndex, ans.selectedAnswer)
+        ).length || 0;
+        return correctAnswers * 100;
     }
 }

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getStudentAnalytics, getGameAnalyticsForTeacher, getTeacherClassesAnalytics, getAdminStats as getAdminStatsService } from "./analytics.service";
+import { getStudentAnalytics, getGameAnalyticsForTeacher, getTeacherClassesAnalytics, getAdminStats as getAdminStatsService, getAdminLogs as getAdminLogsService } from "./analytics.service";
 
 // Dashboard Siswa (Me)
 export const getMyAnalytics = async (req: Request, res: Response) => {
@@ -41,12 +41,13 @@ export const getGameAnalytics = async (req: Request, res: Response) => {
 export const getTeacherClasses = async (req: Request, res: Response) => {
     try {
         const creatorId = (req as any).user?.id || (req as any).user?.userId;
+        const { educationLevel, classGrade } = req.query;
 
         if (!creatorId) {
             return res.status(401).json({ status: "error", message: "Unauthorized." });
         }
 
-        const data = await getTeacherClassesAnalytics(creatorId as string);
+        const data = await getTeacherClassesAnalytics(creatorId as string, educationLevel as string, classGrade as string);
 
         return res.status(200).json({ status: "success", data });
     } catch (error: any) {
@@ -68,5 +69,30 @@ export const getAdminStats = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error("🔥 GET ADMIN STATS ERROR:", error);
         return res.status(500).json({ status: "error", message: error.message, stack: error.stack });
+    }
+};
+
+// Paginated Logs
+export const getAdminLogs = async (req: Request, res: Response) => {
+    try {
+        const user = (req as any).user;
+        if (!user || user.role !== "ADMIN") {
+            return res.status(403).json({ status: "error", message: "Forbidden. Admin only." });
+        }
+
+        const { page, limit, action, search, timeRange } = req.query;
+
+        const data = await getAdminLogsService({
+            page: page ? parseInt(page as string) : undefined,
+            limit: limit ? parseInt(limit as string) : undefined,
+            action: action as string,
+            search: search as string,
+            timeRange: timeRange as string,
+        });
+
+        return res.status(200).json({ status: "success", data });
+    } catch (error: any) {
+        console.error("🔥 GET ADMIN LOGS ERROR:", error);
+        return res.status(500).json({ status: "error", message: error.message });
     }
 };

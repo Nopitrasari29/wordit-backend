@@ -1,8 +1,9 @@
-﻿import { prisma } from "../../config/database";
+import { prisma } from "../../config/database";
 import { hashPassword, comparePassword } from "../../utils/hash";
 import { FileManager } from "../../utils/FileManager";
 import { Prisma, Role, ApprovalStatus } from "@prisma/client";
 import type { UpdateUserInput } from "./user.schema";
+import { createSystemLog } from "../../utils/system-logger";
 
 // ============================================================
 // 1. GET ALL USERS (Admin Dashboard)
@@ -34,7 +35,7 @@ export const getAllUsers = async (query: any) => {
         email: true,
         role: true,
         approvalStatus: true,
-        educationLevel: true,
+        educationLevels: true,
         photoUrl: true,
         createdAt: true,
       },
@@ -56,7 +57,8 @@ export const getAllUsers = async (query: any) => {
 // ============================================================
 export const approveTeacher = async (
   targetUserId: string,
-  action: "APPROVE" | "REJECT"
+  action: "APPROVE" | "REJECT",
+  adminUserId?: string
 ) => {
   const user = await prisma.user.findUnique({ where: { id: targetUserId } });
   if (!user) throw new Error("User tidak ditemukan");
@@ -75,8 +77,16 @@ export const approveTeacher = async (
       email: true,
       role: true,
       approvalStatus: true,
-      educationLevel: true,
+      educationLevels: true,
     },
+  });
+
+  const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
+  await createSystemLog({
+    action: action === "APPROVE" ? "APPROVE_TEACHER" : "REJECT_TEACHER",
+    details: `Teacher "${updated.name}" is ${action === "APPROVE" ? "approved" : "rejected"} by Admin ${admin?.name || "Admin"}`,
+    userId: adminUserId,
+    userName: admin?.name || "Admin",
   });
 
   return updated;
@@ -85,7 +95,7 @@ export const approveTeacher = async (
 // ============================================================
 // 3. CHANGE ROLE (Admin Only)
 // ============================================================
-export const changeUserRole = async (targetUserId: string, newRole: Role) => {
+export const changeUserRole = async (targetUserId: string, newRole: Role, adminUserId?: string) => {
   const user = await prisma.user.findUnique({ where: { id: targetUserId } });
   if (!user) throw new Error("User tidak ditemukan");
 
@@ -97,6 +107,14 @@ export const changeUserRole = async (targetUserId: string, newRole: Role) => {
     where: { id: targetUserId },
     data: { role: newRole },
     select: { id: true, name: true, email: true, role: true },
+  });
+
+  const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
+  await createSystemLog({
+    action: "CHANGE_ROLE",
+    details: `User "${updated.name}" role changed to ${newRole} by Admin ${admin?.name || "Admin"}`,
+    userId: adminUserId,
+    userName: admin?.name || "Admin",
   });
 
   return updated;
@@ -114,7 +132,7 @@ export const getProfile = async (userId: string) => {
       email: true,
       role: true,
       approvalStatus: true,
-      educationLevel: true,
+      educationLevels: true,
       photoUrl: true,
       createdAt: true,
       profile: { select: { bio: true, totalPoints: true, badges: true } },
@@ -170,10 +188,17 @@ export const updateProfile = async (
       email: true,
       role: true,
       approvalStatus: true,
-      educationLevel: true,
+      educationLevels: true,
       photoUrl: true,
       updatedAt: true,
     },
+  });
+
+  await createSystemLog({
+    action: "UPDATE_PROFILE",
+    details: `User "${updated.name}" updated their profile`,
+    userId: userId,
+    userName: updated.name,
   });
 
   return updated;
@@ -201,12 +226,20 @@ export const getUserGames = async (userId: string) => {
 // ============================================================
 // 7. DELETE USER (Admin Only)
 // ============================================================
-export const deleteUser = async (userId: string) => {
+export const deleteUser = async (userId: string, adminUserId?: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
   await prisma.user.delete({ where: { id: userId } });
   if (user.photoUrl) await FileManager.remove(user.photoUrl);
+
+  const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
+  await createSystemLog({
+    action: "DELETE_USER",
+    details: `User "${user.name}" (${user.role}) deleted by Admin ${admin?.name || "Admin"}`,
+    userId: adminUserId,
+    userName: admin?.name || "Admin",
+  });
 
   return { message: "User deleted successfully" };
 };

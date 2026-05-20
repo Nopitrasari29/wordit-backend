@@ -28,7 +28,7 @@ export const ltiProvider = Provider.setup(
 );
 
 // Jalankan ketika siswa berhasil masuk via LTI
-ltiProvider.onConnect(async (token, req, res) => {
+ltiProvider.onConnect(async (token: any, req: any, res: any) => {
   console.log("🚀 LTI Launch Berhasil!", token.userInfo);
 
   // 1. Dapatkan data Moodle

@@ -67,7 +67,7 @@ model User {
   password       String
   role           Role            @default(STUDENT)
   approvalStatus ApprovalStatus  @default(APPROVED)
-  educationLevel EducationLevel?
+  educationLevels EducationLevel[]
   photoUrl       String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -103,6 +103,10 @@ model Game {
   templateType   TemplateType
   educationLevel EducationLevel
   difficulty     DifficultyLevel @default(MEDIUM)
+  classGrade     String?
+  subject        String?
+  chapter        String?
+  topic          String?
   isPublished    Boolean         @default(false)
   isAiGenerated  Boolean         @default(false)
   playCount      Int             @default(0)
@@ -193,5 +197,8 @@ model SystemLog {
   userName  String?
   createdAt DateTime @default(now())
 
+  @@index([createdAt])
+  @@index([userId])
+  @@index([action])
   @@map("system_logs")
 }

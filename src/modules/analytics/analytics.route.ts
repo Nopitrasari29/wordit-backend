@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getMyAnalytics, getGameAnalytics, getTeacherClasses, getAdminStats } from "./analytics.controller";
+import { getMyAnalytics, getGameAnalytics, getTeacherClasses, getAdminStats, getAdminLogs } from "./analytics.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
 
 const router = Router();
@@ -18,6 +18,9 @@ router.get("/teacher/classes", authMiddleware(), getTeacherClasses);
 router.get("/game/:id", authMiddleware(), getGameAnalytics);
 
 // 4. Endpoint Admin: Melihat statistik aplikasi dan log
-router.get("/admin/stats", authMiddleware(), getAdminStats);
+router.get("/admin/stats", authMiddleware(["ADMIN"]), getAdminStats);
+
+// 5. Endpoint Admin: Melihat log aktivitas terpaginasi
+router.get("/admin/logs", authMiddleware(["ADMIN"]), getAdminLogs);
 
 export default router;

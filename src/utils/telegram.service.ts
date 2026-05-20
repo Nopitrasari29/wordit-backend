@@ -87,13 +87,13 @@ export const startTelegramBot = () => {
 /**
  * Fungsi ini dipanggil dari `auth.service.ts` setiap kali ada guru selesai register.
  */
-export const sendApprovalRequestToTele = async (user: { id: string; name: string; email: string; educationLevel: string | null }) => {
+export const sendApprovalRequestToTele = async (user: { id: string; name: string; email: string; educationLevels: string[] }) => {
     if (!botToken || !adminId) {
         console.log("⚠️ Lewati notifikasi Telegram (Token/Admin ID kosong)");
         return;
     }
 
-    const message = `🚨 *GURU BARU DAFTAR!*\n\n*Nama:* ${user.name}\n*Email:* ${user.email}\n*Jenjang:* ${user.educationLevel || "-"}\n\nSilakan review dan tentukan statusnya:`;
+    const message = `🚨 *GURU BARU DAFTAR!*\n\n*Nama:* ${user.name}\n*Email:* ${user.email}\n*Jenjang:* ${user.educationLevels?.join(", ") || "-"}\n\nSilakan review dan tentukan statusnya:`;
 
     try {
         await bot.telegram.sendMessage(adminId, message, {
