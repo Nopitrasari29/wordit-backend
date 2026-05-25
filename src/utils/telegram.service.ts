@@ -73,15 +73,38 @@ bot.action(/reject_(.+)/, async (ctx) => {
 // 🚀 EXPORT FUNCTIONS
 // =====================================================================
 
+// ─── Singleton guard: mencegah double-launch saat hot-reload ────────
+let _botStarted = false;
+
 /**
  * Jalankan fungsi ini di `server.ts` atau `index.ts` utama
  * agar bot selalu standby mendengarkan klik tombol.
  */
 export const startTelegramBot = () => {
-    if (botToken) {
-        bot.launch();
-        console.log("🤖 Telegram Bot Approval System is running...");
+    if (!botToken) return;
+    if (_botStarted) {
+        console.log("🤖 Telegram Bot sudah berjalan, skip re-launch.");
+        return;
     }
+    _botStarted = true;
+
+    const launch = () => {
+        bot.launch().then(() => {
+            console.log("🤖 Telegram Bot is running...");
+        }).catch((err: any) => {
+            // Error 409 = instance lain masih polling → tunggu lalu coba lagi
+            if (err?.message?.includes("409")) {
+                console.warn("⚠️ Telegram 409 Conflict: instance lain masih aktif. Retry dalam 5 detik...");
+                _botStarted = false;
+                setTimeout(launch, 5000);
+            } else {
+                console.error("⚠️ Gagal koneksi ke Telegram API:", err.message);
+                _botStarted = false;
+            }
+        });
+    };
+
+    launch();
 };
 
 /**

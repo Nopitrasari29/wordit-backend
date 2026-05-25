@@ -5,6 +5,7 @@ export const updateUserSchema = z.object({
   email: z.string().email("Invalid email format").optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().min(8, "Password must be at least 8 characters").optional(),
+  bio: z.string().max(250, "Bio cannot exceed 250 characters").optional(),
 }).refine((data) => {
   // Kalau isi newPassword, wajib isi currentPassword juga
   if (data.newPassword && !data.currentPassword) {

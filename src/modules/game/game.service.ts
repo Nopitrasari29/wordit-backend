@@ -180,6 +180,11 @@ export const deleteGame = async (gameId: string, userId: string) => {
 
   // Jalankan penghapusan berantai dalam satu transaksi yang aman
   await prisma.$transaction(async (tx) => {
+    // 0. Hapus LtiContext terlebih dahulu untuk menghindari Foreign Key Violation
+    await tx.ltiContext.deleteMany({
+      where: { gameId },
+    });
+
     if (sessionIds.length > 0) {
       // 1. Hapus Results yang menginduk ke GameSession
       await tx.result.deleteMany({
@@ -427,10 +432,6 @@ export const finishGame = async (
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) throw new Error("Game tidak ditemukan");
 
-  // =========================================================================
-  // 🤖 AUTO-GRADER INTERCEPTOR (ANTI-CHEAT)
-  // Kalkulasi ulang menggunakan service masing-masing agar aman dari manipulasi FE
-  // =========================================================================
   let finalScore = payload.scoreValue;
   let finalAccuracy = payload.accuracy;
   const maxPossibleScore = payload.maxScore > 0 ? payload.maxScore : 100;
@@ -442,68 +443,176 @@ export const finishGame = async (
   let aiGradingResult: any = null;
   let updatedAnswersDetail: any[] = payload.answersDetail;
 
+  // 1. Map `isCorrect` status for non-essay templates to prevent client spoofing
+  if (game.templateType !== TemplateType.ESSAY) {
+    updatedAnswersDetail = (payload.answersDetail || []).map((ans: any) => {
+      let isAnsCorrect = false;
+      switch (game.templateType) {
+        case TemplateType.MULTIPLE_CHOICE:
+          isAnsCorrect = MultipleChoiceService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.TRUE_FALSE:
+          isAnsCorrect = TrueFalseService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.MATCHING:
+          isAnsCorrect = MatchingService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.ANAGRAM:
+          isAnsCorrect = AnagramService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.HANGMAN:
+          isAnsCorrect = HangmanService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.WORD_SEARCH:
+          isAnsCorrect = WordSearchService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.FLASHCARD:
+          isAnsCorrect = FlashcardService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.MAZE_CHASE:
+          isAnsCorrect = MazeChaseService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+        case TemplateType.SPIN_THE_WHEEL:
+          isAnsCorrect = SpinTheWheelService.verifyAnswer(
+            content,
+            ans.questionIndex,
+            ans.selectedAnswer
+          );
+          break;
+      }
+      return { ...ans, isCorrect: isAnsCorrect };
+    });
+
+    correctAnswers = updatedAnswersDetail.filter((ans: any) => ans.isCorrect).length;
+  }
+
+  // 2. Recalculate score and accuracy securely on backend
   if (game.templateType === TemplateType.MULTIPLE_CHOICE) {
     totalQuestions = content.questions?.length || 0;
-    correctAnswers = payload.answersDetail.filter((ans: any) =>
-      MultipleChoiceService.verifyAnswer(
-        content,
-        ans.questionIndex,
-        ans.selectedAnswer,
-      ),
-    ).length;
     finalAccuracy =
       totalQuestions > 0
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = MultipleChoiceService.calculateScore(
-      { ...payload, accuracy: finalAccuracy },
-      content,
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      content
     );
   } else if (game.templateType === TemplateType.TRUE_FALSE) {
     totalQuestions = content.questions?.length || 0;
-    correctAnswers = payload.answersDetail.filter((ans: any) =>
-      TrueFalseService.verifyAnswer(
-        content,
-        ans.questionIndex,
-        ans.selectedAnswer,
-      ),
-    ).length;
     finalAccuracy =
       totalQuestions > 0
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = TrueFalseService.calculateScore(
-      { ...payload, accuracy: finalAccuracy },
-      content,
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      content
     );
   } else if (game.templateType === TemplateType.MATCHING) {
     totalQuestions = content.pairs?.length || 0;
-    correctAnswers = payload.answersDetail.filter((ans: any) =>
-      MatchingService.verifyAnswer(
-        content,
-        ans.questionIndex,
-        ans.selectedAnswer,
-      ),
-    ).length;
     finalAccuracy =
       totalQuestions > 0
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = MatchingService.calculateScore(
-      {
-        ...payload,
-        accuracy: finalAccuracy,
-        answers: payload.answersDetail.map((ans) => ({
-          ...ans,
-          isCorrect: MatchingService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer,
-          ),
-        })),
-      },
-      content,
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      content
     );
+  } else if (game.templateType === TemplateType.ANAGRAM) {
+    totalQuestions = content.words?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = AnagramService.calculateScore(
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      content
+    );
+  } else if (game.templateType === TemplateType.HANGMAN) {
+    totalQuestions = content.words?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = HangmanService.calculateScore(
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      content
+    );
+  } else if (game.templateType === TemplateType.WORD_SEARCH) {
+    totalQuestions = content.words?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = WordSearchService.calculateScore({
+      ...payload,
+      accuracy: finalAccuracy,
+      answers: updatedAnswersDetail,
+    });
+  } else if (game.templateType === TemplateType.FLASHCARD) {
+    totalQuestions = content.cards?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = FlashcardService.calculateScore({
+      ...payload,
+      accuracy: finalAccuracy,
+      answers: updatedAnswersDetail,
+    });
+  } else if (game.templateType === TemplateType.MAZE_CHASE) {
+    totalQuestions = content.questions?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = MazeChaseService.calculateScore({
+      ...payload,
+      accuracy: finalAccuracy,
+      answers: updatedAnswersDetail,
+    });
+  } else if (game.templateType === TemplateType.SPIN_THE_WHEEL) {
+    totalQuestions = content.questions?.length || 0;
+    finalAccuracy =
+      totalQuestions > 0
+        ? Math.round((correctAnswers / totalQuestions) * 100)
+        : 0;
+    finalScore = SpinTheWheelService.calculateScore({
+      ...payload,
+      accuracy: finalAccuracy,
+      answers: updatedAnswersDetail,
+    });
   } else if (game.templateType === TemplateType.ESSAY) {
     totalQuestions = content.questions?.length || 0;
     const gradingResults = [];
@@ -514,11 +623,9 @@ export const finishGame = async (
       const questionObj = content.questions[ans.questionIndex];
 
       if (questionObj) {
-        // ✅ FIX: Skip grading jika jawaban kosong/null (soal tidak dijawab)
         const studentAnswer = ans.selectedAnswer?.trim() || "";
 
         if (!studentAnswer) {
-          // Soal tidak dijawab, langsung beri skor 0
           updatedAnswersDetail.push({
             questionIndex: ans.questionIndex,
             question: questionObj.question,
@@ -541,11 +648,36 @@ export const finishGame = async (
           continue;
         }
 
-        const result = await SmartGradingService.gradeEssay(
-          questionObj.question,
-          questionObj.keywords,
-          studentAnswer,
-        );
+        let result;
+        if (content.gradingMode === "KEYWORD") {
+          console.log("[Smart Grading] Bypassing AI: Menggunakan mode penilaian KEYWORD gratis...");
+          const cleanAnswer = studentAnswer.toLowerCase().trim();
+          const matched = (questionObj.keywords || []).filter((kw: string) => {
+            const cleanKw = kw.toLowerCase().trim();
+            return cleanAnswer.includes(cleanKw);
+          });
+          const missing = (questionObj.keywords || []).filter((kw: string) => !matched.includes(kw));
+
+          const matchedCount = matched.length;
+          const totalKeywords = (questionObj.keywords || []).length;
+          const score = totalKeywords > 0
+            ? Math.round((matchedCount / totalKeywords) * 100)
+            : 50;
+
+          result = {
+            score,
+            justification: `[Mode Gratis] Evaluasi selesai menggunakan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci terdeteksi).`,
+            correctAnswer: questionObj.answer || "Tinjau kembali materi untuk jawaban ideal selengkapnya.",
+            keywordsMatched: matched,
+            keywordsMissing: missing,
+          };
+        } else {
+          result = await SmartGradingService.gradeEssay(
+            questionObj.question,
+            questionObj.keywords,
+            studentAnswer
+          );
+        }
 
         gradingResults.push({
           questionIndex: ans.questionIndex,
@@ -572,11 +704,41 @@ export const finishGame = async (
       }
     }
     payload.answersDetail = updatedAnswersDetail;
-    finalScore =
+    finalScore = Math.round(totalAiScore);
+    finalAccuracy =
       totalQuestions > 0 ? Math.round(totalAiScore / totalQuestions) : 0;
-    finalAccuracy = finalScore;
     aiGradingResult = gradingResults;
   }
+
+  // Helper to sync user profile XP & Badges
+  const syncUserProfile = async (uId: string) => {
+    try {
+      const { getStudentAnalytics } = require("../analytics/analytics.service");
+      const updatedAnalytics = await getStudentAnalytics(uId);
+      const unlockedBadges = (updatedAnalytics.badges || []).filter(
+        (b: any) => b.isUnlocked
+      );
+
+      await prisma.userProfile.upsert({
+        where: { userId: uId },
+        update: {
+          totalPoints: Math.round(updatedAnalytics.overview.totalXp),
+          badges: unlockedBadges as Prisma.InputJsonValue,
+        },
+        create: {
+          userId: uId,
+          bio: "Halo, saya pengguna baru WordIT!",
+          totalPoints: Math.round(updatedAnalytics.overview.totalXp),
+          badges: unlockedBadges as Prisma.InputJsonValue,
+        },
+      });
+      console.log(
+        `✅ UserProfile synced for ${uId}: XP = ${updatedAnalytics.overview.totalXp}, Badges count = ${unlockedBadges.length}`
+      );
+    } catch (profileError) {
+      console.error("❌ Gagal memperbarui UserProfile:", profileError);
+    }
+  };
 
   // Jika tidak ada sesi aktif, buat satu baru dan langsung selesaikan
   if (!session) {
@@ -599,6 +761,8 @@ export const finishGame = async (
         aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
       },
     });
+
+    await syncUserProfile(userId);
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     await createSystemLog({
@@ -641,6 +805,8 @@ export const finishGame = async (
   console.log(
     `✅ Game finished: User ${userId}, Validated Score ${Math.round(finalScore)}, Accuracy ${finalAccuracy}%`,
   );
+
+  await syncUserProfile(userId);
 
   // =========================================================================
   // 🎓 MOODLE LTI GRADE PASSBACK INTERCEPTOR

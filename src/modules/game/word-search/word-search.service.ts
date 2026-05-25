@@ -4,4 +4,10 @@ export class WordSearchService {
     const targetWords = gameJson.words.map((w: any) => w.word.toLowerCase());
     return targetWords.includes((selectedAnswer || "").trim().toLowerCase());
   }
+
+  static calculateScore(payload: any): number {
+    const scorePerCorrect = 100;
+    const correctCount = payload.answers?.filter((a: any) => a.isCorrect === true).length || 0;
+    return correctCount * scorePerCorrect;
+  }
 }

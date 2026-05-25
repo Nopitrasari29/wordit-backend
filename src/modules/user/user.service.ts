@@ -38,6 +38,8 @@ export const getAllUsers = async (query: any) => {
         educationLevels: true,
         photoUrl: true,
         createdAt: true,
+        _count: { select: { gamesCreated: true } },
+        profile: { select: { bio: true, totalPoints: true } }
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -102,6 +104,10 @@ export const changeUserRole = async (targetUserId: string, newRole: Role, adminU
   // Admin tidak bisa di-assign via endpoint
   if (newRole === Role.ADMIN)
     throw new Error("Tidak bisa assign role Admin via endpoint ini");
+
+  // Mencegah admin mengubah role sendiri (lockout lockout prevention)
+  if (adminUserId === targetUserId)
+    throw new Error("Admin tidak diizinkan mengubah role milik sendiri");
 
   const updated = await prisma.user.update({
     where: { id: targetUserId },
@@ -174,6 +180,14 @@ export const updateProfile = async (
     updatedPicturePath = newPath;
   }
 
+  if (data.bio !== undefined) {
+    await prisma.userProfile.upsert({
+      where: { userId },
+      update: { bio: data.bio },
+      create: { userId, bio: data.bio },
+    });
+  }
+
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
@@ -191,6 +205,7 @@ export const updateProfile = async (
       educationLevels: true,
       photoUrl: true,
       updatedAt: true,
+      profile: { select: { bio: true, totalPoints: true, badges: true } },
     },
   });
 

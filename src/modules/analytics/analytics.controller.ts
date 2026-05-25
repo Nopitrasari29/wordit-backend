@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getStudentAnalytics, getGameAnalyticsForTeacher, getTeacherClassesAnalytics, getAdminStats as getAdminStatsService, getAdminLogs as getAdminLogsService } from "./analytics.service";
+import { getStudentAnalytics, getGameAnalyticsForTeacher, getTeacherClassesAnalytics, getAdminStats as getAdminStatsService, getAdminLogs as getAdminLogsService, deleteResultForRemedial } from "./analytics.service";
 
 // Dashboard Siswa (Me)
 export const getMyAnalytics = async (req: Request, res: Response) => {
@@ -96,3 +96,20 @@ export const getAdminLogs = async (req: Request, res: Response) => {
         return res.status(500).json({ status: "error", message: error.message });
     }
 };
+
+// Reset/Remedial Sesi (Hapus Result & Session)
+export const deleteResultForRemedialController = async (req: Request, res: Response) => {
+    try {
+        const { resultId } = req.params;
+        const teacherId = (req as any).user?.id || (req as any).user?.userId;
+
+        if (!resultId || !teacherId) {
+            return res.status(400).json({ status: "error", message: "ID Hasil atau ID Guru tidak valid." });
+        }
+
+        const data = await deleteResultForRemedial(resultId as string, teacherId as string);
+        return res.status(200).json({ status: "success", data });
+    } catch (error: any) {
+        return res.status(500).json({ status: "error", message: error.message });
+    }
+};

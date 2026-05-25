@@ -108,7 +108,7 @@ export const getApiUsageStats = () => ({
         - Hasilkan tepat ${count} objek di dalam array "pairs".`;
         break;
       case "ESSAY":
-        formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "${essayInstruction}", "keywords": ["kunci1", "kunci2", "kunci3", "kunci4"], "hint": "Arahan cara menjawab" } ] }\n\n⚠️ PENTING: 'keywords' harus berisi 3-5 kata kunci teknis/penting yang WAJIB ada di jawaban siswa agar nilainya sempurna.`;
+        formatInstruction = `{ "template": "ESSAY", "questions": [ { "question": "${essayInstruction}", "keywords": ["kunci1", "kunci2", "kunci3", "kunci4"], "answer": "Jawaban acuan/referensi ideal yang benar dan komprehensif", "hint": "Arahan cara menjawab" } ] }\n\n⚠️ PENTING:\n- 'keywords' harus berisi 3-5 kata kunci teknis/penting yang WAJIB ada di jawaban siswa agar nilainya sempurna.\n- 'answer' harus berisi kalimat referensi jawaban ideal yang benar untuk pertanyaan ini.`;
         break;
       default:
         formatInstruction = `{ "error": "Template tidak dikenal" }`;
@@ -358,6 +358,39 @@ export const generateQuizContent = async (
     return generateAnagram(topic, educationLevel, count);
   }
 
+  // 💡 OPTIMASI: Gunakan Gemini sebagai model utama jika jumlah soal > 5 ATAU tipe soal adalah ESSAY
+  // Karena Llama 8B seringkali kehabisan token/limitasi memori untuk teks panjang dalam Bahasa Indonesia.
+  const useGeminiFirst = count > 5 || templateType === "ESSAY";
+
+  if (useGeminiFirst) {
+    console.log(`[AI] Using Gemini as primary provider because count is ${count} or template is ${templateType}`);
+    try {
+      const systemPrompt = getSystemPrompt(
+        educationLevel,
+        templateType,
+        count,
+        difficulty,
+        1,
+        metadata
+      );
+      const res = await getGeminiResponse(
+        systemPrompt,
+        `Topik: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`
+      );
+      const data = await processAiResponse(res || "", "gemini");
+      const itemCount = getItemsCount(data);
+      const isStructureValid = validateStructure(data, templateType);
+
+      if (itemCount === count && isStructureValid) {
+        console.log(`[AI] Gemini Primary Success ✅ (${itemCount} soal)`);
+        return data;
+      }
+      console.warn(`[AI] Gemini primary returned invalid count/structure (${itemCount}/${count}). Falling back to Groq...`);
+    } catch (geminiErr: any) {
+      console.warn(`[AI] Gemini primary error: ${geminiErr.message}. Falling back to Groq...`);
+    }
+  }
+
   let attempts = 0;
 
   // Mekanisme retry hingga 3 kali dengan prompt yang semakin ketat (AI-05)
@@ -455,7 +488,7 @@ export const generateFeedbackContent = async (
   questionText: string,
   correctAnswer: string,
 ) => {
-  const systemPrompt = `Berikan penjelasan edukatif menyemangati max 100 kata. JSON: { "feedback": "..." }`;
+  const systemPrompt = `Berikan penjelasan edukatif menyemangati max 100 kata. DILARANG KERAS mengulangi atau menulis ulang teks 'Jawaban Benar:' di akhir kalimat (karena UI sudah menampilkannya). Fokus saja pada MENGAPA jawaban tersebut benar. JSON: { "feedback": "..." }`;
   const userPrompt = `Pertanyaan: ${questionText}\nJawaban Benar: ${correctAnswer}`;
   try {
     const res = await getGroqResponse(systemPrompt, userPrompt);

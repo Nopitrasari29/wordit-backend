@@ -1,5 +1,5 @@
 import { prisma } from "../../config/database";
-import { Prisma, EducationLevel } from "@prisma/client";
+import { Prisma, EducationLevel, Role, ApprovalStatus } from "@prisma/client";
 
 // =====================================================================
 // 🏅 BADGE COMPUTATION (FE-19 Gamification)
@@ -231,8 +231,8 @@ export const getGameAnalyticsForTeacher = async (
       averageAccuracy:
         results.length > 0
           ? Math.round(
-              results.reduce((acc, r) => acc + r.accuracy, 0) / results.length,
-            )
+            results.reduce((acc, r) => acc + r.accuracy, 0) / results.length,
+          )
           : 0,
     },
     classDistribution,
@@ -259,12 +259,12 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
 
   const gameIds = games.map((g) => g.id);
 
-  // ✅ FIX FE-20: Tambah filter role STUDENT agar akun guru tidak masuk hitungan
+  // ✅ FIX FE-20: Filter agar akun pembuat game (guru ybs) tidak masuk hitungan
   const results = await prisma.result.findMany({
     where: {
       session: {
         gameId: { in: gameIds },
-        user: { role: "STUDENT" }
+        user: { id: { not: teacherId } }
       },
     },
     include: {
@@ -277,11 +277,11 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
     },
   });
 
-  // ✅ FIX FE-20: Auto-grouping berdasarkan format "kelas_nama", dipisah dengan "_" atau " "
+  // ✅ FIX FE-20: Auto-grouping berdasarkan format "kelas_nama", dipisah dengan "_" atau " " atau "-"
   // Jika tidak bisa di-group, masuk grup "UMUM"
   const extractGroup = (playerName: string): string => {
-    // Regex for grabbing anything before the first underscore or space, non-greedy
-    const match = playerName.match(/^(.+?)[_\s]/);
+    // Regex for grabbing anything before the first underscore, space, or hyphen
+    const match = playerName.match(/^(.+?)[_\-\s]/);
     const groupName = match?.[1]?.trim();
     return groupName ? groupName.toUpperCase() : "UMUM";
   };
@@ -361,8 +361,8 @@ export const getAdaptiveDifficulty = async (
     select: { scoreValue: true },
   });
 
-  // Jika belum pernah main atau data kurang dari 3, default ke EASY
-  if (lastResults.length < 3) return "EASY";
+  // Jika belum pernah main atau data kurang dari 3, default ke MEDIUM
+  if (lastResults.length < 3) return "MEDIUM";
 
   // 2. Hitung rata-rata skor dari 3 game terakhir
   const avgScore =
@@ -379,39 +379,177 @@ export const getAdaptiveDifficulty = async (
 // 👑 ADMIN ANALYTICS
 // =====================================================================
 export const getAdminStats = async () => {
-  let totalUsers = 0;
-  let totalGames = 0;
-  let totalSessions = 0;
-  let systemLogs = [];
-
   try {
-    totalUsers = await prisma.user.count();
-    totalGames = await prisma.game.count({ where: { isPublished: true } });
-    totalSessions = await prisma.gameSession.count({
-      where: { isCompleted: true },
+    // Buat rentang 7 hari ke belakang untuk tren sesi harian
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const [
+      totalUsers,
+      totalStudents,
+      totalTeachersApproved,
+      totalTeachersPending,
+      totalTeachersRejected,
+      totalGamesPublished,
+      totalGamesDraft,
+      totalSessions,
+      topGamesRaw,
+      templateDistRaw,
+      topTeachersRaw,
+      levelDistRaw,
+      recentSessionsRaw,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { role: Role.STUDENT } }),
+      prisma.user.count({ where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.APPROVED } }),
+      prisma.user.count({ where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.PENDING } }),
+      prisma.user.count({ where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.REJECTED } }),
+      prisma.game.count({ where: { isPublished: true } }),
+      prisma.game.count({ where: { isPublished: false } }),
+      prisma.gameSession.count({ where: { isCompleted: true } }),
+      // Top 5 game paling sering dimainkan
+      prisma.game.findMany({
+        where: { isPublished: true },
+        orderBy: { playCount: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          templateType: true,
+          playCount: true,
+          creator: { select: { name: true } },
+        },
+      }),
+      // Distribusi game per template type
+      prisma.game.groupBy({
+        by: ["templateType"],
+        _count: { id: true },
+        orderBy: { _count: { id: "desc" } },
+      }),
+      // Top 5 guru paling aktif (berdasarkan jumlah game yang dibuat)
+      prisma.user.findMany({
+        where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.APPROVED },
+        select: {
+          id: true,
+          name: true,
+          educationLevels: true,
+          _count: { select: { gamesCreated: true } },
+        },
+        orderBy: { gamesCreated: { _count: "desc" } },
+        take: 5,
+      }),
+      // Distribusi game per education level
+      prisma.game.groupBy({
+        by: ["educationLevel"],
+        _count: { id: true },
+        orderBy: { _count: { id: "desc" } },
+      }),
+      // Sesi yang selesai dalam 7 hari terakhir (untuk tren harian)
+      prisma.gameSession.findMany({
+        where: {
+          isCompleted: true,
+          finishedAt: { gte: sevenDaysAgo, lte: today },
+        },
+        select: { finishedAt: true },
+      }),
+    ]);
+
+    // Format top games
+    const topGames = topGamesRaw.map((g) => ({
+      id: g.id,
+      title: g.title,
+      templateType: g.templateType,
+      playCount: g.playCount || 0,
+      creatorName: g.creator?.name || "—",
+    }));
+
+    // Format template distribution
+    const templateDistribution = templateDistRaw.map((t) => ({
+      templateType: t.templateType,
+      count: t._count.id,
+    }));
+
+    // Format top teachers
+    const topTeachers = topTeachersRaw.map((t) => ({
+      id: t.id,
+      name: t.name,
+      educationLevels: t.educationLevels,
+      gameCount: t._count.gamesCreated,
+    }));
+
+    // Format education level distribution
+    const levelDistribution = levelDistRaw.map((l) => ({
+      level: l.educationLevel,
+      count: l._count.id,
+    }));
+
+    // Hitung sesi per hari selama 7 hari terakhir
+    const DAYS_ID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+    const dailyMap: Record<string, number> = {};
+    // Inisialisasi 7 hari dengan angka 0
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split("T")[0]!; // "YYYY-MM-DD"
+      dailyMap[key] = 0;
+    }
+    // Isi dengan data nyata
+    recentSessionsRaw.forEach((s) => {
+      if (s.finishedAt) {
+        const key = s.finishedAt.toISOString().split("T")[0]!;
+        if (key in dailyMap) {
+          dailyMap[key] = (dailyMap[key] || 0) + 1;
+        }
+      }
+    });
+    const last7DaysSessions = Object.entries(dailyMap).map(([date, count]) => {
+      const d = new Date(date);
+      return {
+        date,
+        label: DAYS_ID[d.getDay()] || date,
+        count,
+      };
     });
 
-    // @ts-ignore
-    if ((prisma as any).systemLog) {
-      // @ts-ignore
-      systemLogs = await (prisma as any).systemLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      });
-    }
+    return {
+      totalUsers,
+      totalStudents,
+      teachers: {
+        approved: totalTeachersApproved,
+        pending: totalTeachersPending,
+        rejected: totalTeachersRejected,
+        total: totalTeachersApproved + totalTeachersPending + totalTeachersRejected,
+      },
+      games: {
+        published: totalGamesPublished,
+        draft: totalGamesDraft,
+        total: totalGamesPublished + totalGamesDraft,
+      },
+      totalSessions,
+      topGames,
+      templateDistribution,
+      topTeachers,
+      levelDistribution,
+      last7DaysSessions,
+    };
   } catch (e: any) {
-    console.error(
-      "⚠️ [AdminStats] Database schema mismatch or missing tables:",
-      e.message,
-    );
+    console.error("⚠️ [AdminStats] Error:", e.message);
+    return {
+      totalUsers: 0,
+      totalStudents: 0,
+      teachers: { approved: 0, pending: 0, rejected: 0, total: 0 },
+      games: { published: 0, draft: 0, total: 0 },
+      totalSessions: 0,
+      topGames: [],
+      templateDistribution: [],
+      topTeachers: [],
+      levelDistribution: [],
+      last7DaysSessions: [],
+    };
   }
-
-  return {
-    totalUsers,
-    totalGames,
-    totalSessions,
-    systemLogs,
-  };
 };
 
 export const getAdminLogs = async (params: {
@@ -480,3 +618,58 @@ export const getAdminLogs = async (params: {
     },
   };
 };
+
+// =====================================================================
+// 🔄 REMEDIAL / RESET SESSION (TEACHER ACTION)
+// =====================================================================
+export const deleteResultForRemedial = async (resultId: string, teacherId: string) => {
+  // 1. Dapatkan result beserta session dan game-nya untuk memastikan game ini milik si guru (teacherId)
+  const result = await prisma.result.findUnique({
+    where: { id: resultId },
+    include: {
+      session: {
+        include: {
+          game: true,
+          user: { select: { name: true } }
+        }
+      }
+    }
+  });
+
+  if (!result) {
+    throw new Error("Data hasil tidak ditemukan");
+  }
+
+  if (result.session.game.creatorId !== teacherId) {
+    throw new Error("Unauthorized: Kuis ini bukan buatan Anda");
+  }
+
+  // 2. Hapus dalam transaction yang aman
+  await prisma.$transaction(async (tx) => {
+    // Hapus result
+    await tx.result.delete({
+      where: { id: resultId }
+    });
+    // Hapus session
+    await tx.gameSession.delete({
+      where: { id: result.sessionId }
+    });
+  });
+
+  // Log system log
+  try {
+    const { createSystemLog } = require("../../utils/system-logger");
+    const user = await prisma.user.findUnique({ where: { id: teacherId } });
+    await createSystemLog({
+      action: "REMEDIAL_ASSIGNED",
+      details: `Remedial ditugaskan ke siswa "${result.session.user.name}" untuk game "${result.session.game.title}". Hasil kuis lama dihapus.`,
+      userId: teacherId,
+      userName: user?.name || "Unknown",
+    });
+  } catch (logErr) {
+    console.error("Gagal mencatat log remedial:", logErr);
+  }
+
+  return { success: true };
+};
+

@@ -241,15 +241,28 @@ OUTPUT HANYA JSON MURNI, TANPA markdown, tanpa penjelasan luar:
         );
         return result;
       } catch (fallbackError: any) {
-        console.error("❌ [Smart Grading Critical]: Seluruh provider gagal.");
+        console.error("❌ [Smart Grading Critical]: Seluruh provider gagal. Mengaktifkan sistem fallback kata kunci lokal...");
+
+        const cleanAnswer = studentAnswer.toLowerCase().trim();
+        const matched = keywords.filter((kw) => {
+          const cleanKw = kw.toLowerCase().trim();
+          return cleanAnswer.includes(cleanKw);
+        });
+        const missing = keywords.filter((kw) => !matched.includes(kw));
+
+        const matchedCount = matched.length;
+        const totalKeywords = keywords.length;
+        const fallbackScore =
+          totalKeywords > 0
+            ? Math.round((matchedCount / totalKeywords) * 100)
+            : 50;
 
         return {
-          score: 0,
-          justification:
-            "Layanan penilaian AI sedang sibuk. Silakan coba lagi nanti.",
-          correctAnswer: "",
-          keywordsMatched: [],
-          keywordsMissing: keywords,
+          score: fallbackScore,
+          justification: `[Sistem Fallback] Kuis Anda berhasil dinilai berdasarkan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci ditemukan).`,
+          correctAnswer: "Silakan tinjau kembali materi kuliah untuk jawaban ideal selengkapnya.",
+          keywordsMatched: matched,
+          keywordsMissing: missing,
         };
       }
     }
