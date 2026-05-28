@@ -125,6 +125,74 @@ export const seedGames = async () => {
           { question: "Apa kepanjangan SQL?", answer: "Structured Query Language" }
         ]
       }
+    },
+    {
+      title: "Kuis Pengetahuan Umum",
+      description: "Pilih jawaban yang paling tepat mengenai sains dan bumi",
+      templateType: TemplateType.MULTIPLE_CHOICE,
+      educationLevel: EducationLevel.SMP,
+      difficulty: DifficultyLevel.MEDIUM,
+      isPublished: true,
+      creatorId: teacherId,
+      shareCode: "UMUM02",
+      gameJson: {
+        questions: [
+          { question: "Planet manakah yang paling dekat dengan Matahari?", options: ["Merkurius", "Venus", "Bumi", "Mars"], correctAnswer: "Merkurius" },
+          { question: "Apa unsur kimia berlambang O?", options: ["Emas", "Oksigen", "Helium", "Karbon"], correctAnswer: "Oksigen" },
+          { question: "Gas apa yang paling banyak di atmosfer Bumi?", options: ["Oksigen", "Nitrogen", "Karbon Dioksida", "Argon"], correctAnswer: "Nitrogen" }
+        ]
+      }
+    },
+    {
+      title: "Fakta Astronomi Benar/Salah",
+      description: "Uji pengetahuanmu tentang tata surya kita",
+      templateType: TemplateType.TRUE_FALSE,
+      educationLevel: EducationLevel.SMA,
+      difficulty: DifficultyLevel.EASY,
+      isPublished: true,
+      creatorId: teacherId,
+      shareCode: "ASTRO3",
+      gameJson: {
+        questions: [
+          { question: "Matahari adalah sebuah bintang.", correctAnswer: true },
+          { question: "Bulan memiliki cahaya sendiri.", correctAnswer: false },
+          { question: "Satu tahun di Mars lebih pendek daripada di Bumi.", correctAnswer: false }
+        ]
+      }
+    },
+    {
+      title: "Pasangan Ibu Kota Negara",
+      description: "Hubungkan negara dengan ibu kotanya yang sesuai",
+      templateType: TemplateType.MATCHING,
+      educationLevel: EducationLevel.SD,
+      difficulty: DifficultyLevel.EASY,
+      isPublished: true,
+      creatorId: teacherId,
+      shareCode: "KOTA04",
+      gameJson: {
+        pairs: [
+          { leftItem: "Indonesia", rightItem: "Jakarta" },
+          { leftItem: "Jepang", rightItem: "Tokyo" },
+          { leftItem: "Malaysia", rightItem: "Kuala Lumpur" },
+          { leftItem: "Inggris", rightItem: "London" }
+        ]
+      }
+    },
+    {
+      title: "Evaluasi Ekologi Lingkungan",
+      description: "Jelaskan konsep ekologi secara terperinci menggunakan istilah kunci",
+      templateType: TemplateType.ESSAY,
+      educationLevel: EducationLevel.UNIVERSITY,
+      difficulty: DifficultyLevel.HARD,
+      isPublished: true,
+      creatorId: teacherId,
+      shareCode: "EKOL05",
+      gameJson: {
+        questions: [
+          { question: "Jelaskan bagaimana proses fotosintesis berperan dalam siklus karbon bumi.", keywords: ["fotosintesis", "karbon", "oksigen", "klorofil", "tumbuhan"] },
+          { question: "Apa dampak pemanasan global terhadap ekosistem laut?", keywords: ["suhu", "laut", "terumbu karang", "pemutihan", "karbondioksida"] }
+        ]
+      }
     }
   ];
 

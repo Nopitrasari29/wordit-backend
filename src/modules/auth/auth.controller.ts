@@ -1,5 +1,5 @@
 import type { Request, Response } from "express"
-import { registerSchema, loginSchema } from "./auth.schema"
+import { registerSchema, loginSchema, ltiLoginSchema } from "./auth.schema"
 import * as authService from "./auth.service"
 import { successResponse, errorResponse } from "../../utils/response"
 
@@ -47,6 +47,22 @@ export const logout = async (req: Request, res: Response) => {
     res.status(200).json(successResponse(result, "Logout successful"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Logout failed"
+    res.status(400).json(errorResponse(message))
+  }
+}
+
+export const ltiLogin = async (req: Request, res: Response) => {
+  try {
+    const parsed = ltiLoginSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json(errorResponse("Validation error", parsed.error.flatten().fieldErrors))
+      return
+    }
+
+    const result = await authService.ltiLogin(parsed.data)
+    res.status(200).json(successResponse(result, "LTI Login successful"))
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "LTI Login failed"
     res.status(400).json(errorResponse(message))
   }
 }

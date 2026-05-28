@@ -34,3 +34,20 @@ export const authMiddleware = (allowedRoles: string[] = []) => {
     }
   };
 };
+
+// 3. Optional Auth Middleware (Allows guests, parses token if present)
+export const optionalAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        const decoded = verifyToken(token);
+        req.user = decoded;
+      }
+    }
+  } catch {
+    // Abaikan jika token tidak valid/kadaluwarsa, biarkan request berlanjut sebagai Guest
+  }
+  next();
+};

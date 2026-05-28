@@ -7,6 +7,7 @@ const router = Router();
 // Public Routes
 router.post("/register", authController.register);
 router.post("/login", authController.login);
+router.post("/lti-login", authController.ltiLogin);
 
 // Protected Routes: Butuh login (semua role boleh akses)
 router.post("/logout", authMiddleware(), authController.logout);

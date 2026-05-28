@@ -4,7 +4,7 @@ import { createServer } from "http";
 import { initSocket } from "./src/socket";
 import "./src/config/redis"; // ✅ Pastikan Redis siap untuk caching leaderboard
 import { startTelegramBot } from "./src/utils/telegram.service"; // ✅ IMPORT TELEGRAM BOT
-import { ltiProvider } from "./src/config/lti"; // ✅ IMPORT LTIJS PROVIDER
+import { ltiProvider, registerMoodlePlatform } from "./src/config/lti"; // ✅ IMPORT LTIJS PROVIDER
 
 // 🎯 Ambil port dari env dengan fallback ke 5000 (standar Node.js)
 const port = env?.port ? parseInt(env.port) : 5000;
@@ -27,6 +27,9 @@ const startServer = async () => {
     console.log("⏳ Menghubungkan ke MongoDB LTI...");
     await ltiProvider.deploy({ serverless: true });
     console.log("✅ LTIJS berhasil koneksi ke Database!");
+
+    // Auto-register platform from environment variables
+    await registerMoodlePlatform();
 
     // 5. Nyalakan Server Express + Socket
     server.listen(port, () => {

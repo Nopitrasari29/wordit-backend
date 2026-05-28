@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import * as userController from "./user.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
 import { uploadMiddleware } from "../../middleware/upload.middleware";
@@ -16,6 +16,7 @@ router.patch(
   userController.updateProfile
 );
 router.get("/my-games", authMiddleware(), userController.getMyGames);
+router.get("/leaderboard", authMiddleware(), userController.getStudentLeaderboard);
 
 // ============================================================
 // ADMIN ONLY

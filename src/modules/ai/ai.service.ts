@@ -3,13 +3,7 @@ import { getGeminiResponse } from "./providers/gemini.provider";
 import { generateAnagram } from "./anagram.service";
 import { SmartGradingService } from "./smart-grading.service";
 import { createSystemLog } from "../../utils/system-logger";
-
-/**
- * Monitoring penggunaan API harian (AI-09)
- * dailyApiHits di-reset setiap tengah malam via resetDailyHits()
- */
-let dailyApiHits = 0;
-let dailyHitDate = new Date().toDateString();
+import { redis } from "../../config/redis"; // ✅ IMPORT REDIS FOR PERSISTENCE
 
 // Ambang batas peringatan: 80% dari estimasi limit harian Groq (free tier ~14.400/hari)
 const QUOTA_ALERT_THRESHOLD = 11500;
@@ -17,29 +11,27 @@ const QUOTA_ALERT_THRESHOLD = 11500;
 const QUOTA_CRITICAL_THRESHOLD = 13680;
 
 /**
- * Mereset counter jika sudah berganti hari (AI-09)
+ * Mendapatkan key Redis harian
  */
-const checkAndResetDailyHits = () => {
+const getDailyHitsKey = (): string => {
   const today = new Date().toDateString();
-  if (today !== dailyHitDate) {
-    console.log(
-      `[AI Quota] Hari baru terdeteksi. Reset counter dari ${dailyApiHits} ke 0.`,
-    );
-    dailyApiHits = 0;
-    dailyHitDate = today;
-  }
+  return `ai:quota:hits:${today}`;
 };
 
 /**
- * Getter untuk monitoring eksternal (AI-09)
+ * Getter untuk monitoring eksternal (AI-09) - Sekarang Asinkron menggunakan Redis
  */
-export const getApiUsageStats = () => ({
-  dailyHits: dailyApiHits,
-  warningThreshold: QUOTA_ALERT_THRESHOLD,
-  criticalThreshold: QUOTA_CRITICAL_THRESHOLD,
-  date: dailyHitDate,
-  usagePercent: Math.round((dailyApiHits / QUOTA_CRITICAL_THRESHOLD) * 100),
-});
+export const getApiUsageStats = async () => {
+  const redisKey = getDailyHitsKey();
+  const dailyApiHits = parseInt(await redis.get(redisKey) || "0", 10);
+  return {
+    dailyHits: dailyApiHits,
+    warningThreshold: QUOTA_ALERT_THRESHOLD,
+    criticalThreshold: QUOTA_CRITICAL_THRESHOLD,
+    date: new Date().toDateString(),
+    usagePercent: Math.round((dailyApiHits / QUOTA_CRITICAL_THRESHOLD) * 100),
+  };
+};
 
   const getSystemPrompt = (
     educationLevel: string,
@@ -278,14 +270,18 @@ const sendTeleAlert = async (message: string) => {
 };
 
 /**
- * Memproses respons AI, mencatat penggunaan, dan memeriksa kuota (AI-09)
+ * Memproses respons AI, mencatat penggunaan, dan memeriksa kuota (AI-09) - Redis Backed
  */
 const processAiResponse = async (
   text: string,
   provider: "groq" | "gemini" = "groq",
 ) => {
-  checkAndResetDailyHits();
-  dailyApiHits++;
+  const redisKey = getDailyHitsKey();
+  const dailyApiHits = await redis.incr(redisKey);
+  // Set TTL ke 24 jam saat hit pertama
+  if (dailyApiHits === 1) {
+    await redis.expire(redisKey, 86400);
+  }
 
   const usagePercent = Math.round(
     (dailyApiHits / QUOTA_CRITICAL_THRESHOLD) * 100,
@@ -302,26 +298,40 @@ const processAiResponse = async (
     }).catch(() => {});
   }
 
-  // Alert 80% limit (AI-09)
-  if (dailyApiHits === QUOTA_ALERT_THRESHOLD) {
-    const alertMsg = `Kuota harian ${provider.toUpperCase()} mencapai ~80% (${dailyApiHits} hits). Pertimbangkan untuk membatasi request.`;
-    sendTeleAlert(alertMsg);
-    createSystemLog({
-      action: "AI_QUOTA_WARNING",
-      details: alertMsg,
-    }).catch(() => {});
-    console.warn(`[AI Quota] ⚠️ WARNING: ${alertMsg}`);
+  // Alert 80% limit (AI-09) - Cegah spam Telegram dengan flag Redis
+  if (dailyApiHits >= QUOTA_ALERT_THRESHOLD) {
+    const todayStr = new Date().toDateString();
+    const alertSentKey = `ai:quota:alert:warning:${todayStr}`;
+    const alertSent = await redis.get(alertSentKey);
+    
+    if (!alertSent) {
+      await redis.set(alertSentKey, "true", "EX", 86400);
+      const alertMsg = `Kuota harian ${provider.toUpperCase()} mencapai ~80% (${dailyApiHits} hits). Pertimbangkan untuk membatasi request.`;
+      sendTeleAlert(alertMsg);
+      createSystemLog({
+        action: "AI_QUOTA_WARNING",
+        details: alertMsg,
+      }).catch(() => {});
+      console.warn(`[AI Quota] ⚠️ WARNING: ${alertMsg}`);
+    }
   }
 
-  // Alert kritis 95% limit (AI-09)
-  if (dailyApiHits === QUOTA_CRITICAL_THRESHOLD) {
-    const criticalMsg = `KRITIS! Kuota ${provider.toUpperCase()} mencapai ~95% (${dailyApiHits} hits). Sistem berisiko gagal sebelum tengah malam!`;
-    sendTeleAlert(criticalMsg);
-    createSystemLog({
-      action: "AI_QUOTA_CRITICAL",
-      details: criticalMsg,
-    }).catch(() => {});
-    console.error(`[AI Quota] 🚨 CRITICAL: ${criticalMsg}`);
+  // Alert kritis 95% limit (AI-09) - Cegah spam Telegram dengan flag Redis
+  if (dailyApiHits >= QUOTA_CRITICAL_THRESHOLD) {
+    const todayStr = new Date().toDateString();
+    const criticalSentKey = `ai:quota:alert:critical:${todayStr}`;
+    const criticalSent = await redis.get(criticalSentKey);
+
+    if (!criticalSent) {
+      await redis.set(criticalSentKey, "true", "EX", 86400);
+      const criticalMsg = `KRITIS! Kuota ${provider.toUpperCase()} mencapai ~95% (${dailyApiHits} hits). Sistem berisiko gagal sebelum tengah malam!`;
+      sendTeleAlert(criticalMsg);
+      createSystemLog({
+        action: "AI_QUOTA_CRITICAL",
+        details: criticalMsg,
+      }).catch(() => {});
+      console.error(`[AI Quota] 🚨 CRITICAL: ${criticalMsg}`);
+    }
   }
 
   try {

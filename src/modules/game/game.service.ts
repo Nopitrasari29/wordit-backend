@@ -10,6 +10,7 @@ import { redis } from "../../config/redis";
 import { getIO } from "../../socket";
 import { getAdaptiveDifficulty } from "../analytics/analytics.service";
 import { createSystemLog } from "../../utils/system-logger";
+import { ltiProvider } from "../../config/lti";
 
 // ═══════════════ IMPORT SEMUA GAME ENGINE ═══════════════
 import { AnagramService } from "./anagram/anagram.service";
@@ -141,6 +142,15 @@ export const updateGame = async (
   if (!game) throw new Error("Game not found");
   if (game.creatorId !== userId) throw new Error("Unauthorized");
 
+  // Validasi jika jenjang pendidikan (educationLevel) diubah
+  if (data.educationLevel) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error("User not found");
+    if (!user.educationLevels.includes(data.educationLevel as EducationLevel)) {
+      throw new Error("Anda tidak memiliki akses ke jenjang pendidikan ini.");
+    }
+  }
+
   const updatedGame = await prisma.game.update({
     where: { id: gameId },
     data: {
@@ -200,6 +210,14 @@ export const deleteGame = async (gameId: string, userId: string) => {
     // 3. Terakhir, baru hapus Game utamanya
     await tx.game.delete({ where: { id: gameId } });
   });
+
+  // Hapus data leaderboard real-time di Redis jika ada
+  try {
+    await redis.del(`leaderboard:${gameId}`);
+    console.log(`🗑️ Redis leaderboard key leaderboard:${gameId} cleared.`);
+  } catch (redisErr) {
+    console.error(`⚠️ Gagal menghapus key Redis leaderboard:${gameId}:`, redisErr);
+  }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   await createSystemLog({
@@ -441,11 +459,21 @@ export const finishGame = async (
   let correctAnswers = 0;
 
   let aiGradingResult: any = null;
-  let updatedAnswersDetail: any[] = payload.answersDetail;
+
+  // De-duplicate answers by questionIndex/word/front to prevent duplicate score exploitation
+  const uniqueAnswersMap = new Map();
+  for (const ans of payload.answersDetail || []) {
+    if (ans) {
+      const key = ans.questionIndex !== undefined ? ans.questionIndex : (ans.word || ans.front || JSON.stringify(ans));
+      uniqueAnswersMap.set(key, ans);
+    }
+  }
+  const deDuplicatedAnswers = Array.from(uniqueAnswersMap.values());
+  let updatedAnswersDetail: any[] = deDuplicatedAnswers;
 
   // 1. Map `isCorrect` status for non-essay templates to prevent client spoofing
   if (game.templateType !== TemplateType.ESSAY) {
-    updatedAnswersDetail = (payload.answersDetail || []).map((ans: any) => {
+    updatedAnswersDetail = deDuplicatedAnswers.map((ans: any) => {
       let isAnsCorrect = false;
       switch (game.templateType) {
         case TemplateType.MULTIPLE_CHOICE:
@@ -526,7 +554,7 @@ export const finishGame = async (
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = MultipleChoiceService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
       content
     );
   } else if (game.templateType === TemplateType.TRUE_FALSE) {
@@ -536,7 +564,7 @@ export const finishGame = async (
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = TrueFalseService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
       content
     );
   } else if (game.templateType === TemplateType.MATCHING) {
@@ -546,7 +574,7 @@ export const finishGame = async (
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = MatchingService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
       content
     );
   } else if (game.templateType === TemplateType.ANAGRAM) {
@@ -556,7 +584,7 @@ export const finishGame = async (
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = AnagramService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
       content
     );
   } else if (game.templateType === TemplateType.HANGMAN) {
@@ -566,7 +594,7 @@ export const finishGame = async (
         ? Math.round((correctAnswers / totalQuestions) * 100)
         : 0;
     finalScore = HangmanService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail },
+      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
       content
     );
   } else if (game.templateType === TemplateType.WORD_SEARCH) {
@@ -579,6 +607,7 @@ export const finishGame = async (
       ...payload,
       accuracy: finalAccuracy,
       answers: updatedAnswersDetail,
+      answersDetail: updatedAnswersDetail,
     });
   } else if (game.templateType === TemplateType.FLASHCARD) {
     totalQuestions = content.cards?.length || 0;
@@ -590,6 +619,7 @@ export const finishGame = async (
       ...payload,
       accuracy: finalAccuracy,
       answers: updatedAnswersDetail,
+      answersDetail: updatedAnswersDetail,
     });
   } else if (game.templateType === TemplateType.MAZE_CHASE) {
     totalQuestions = content.questions?.length || 0;
@@ -601,6 +631,7 @@ export const finishGame = async (
       ...payload,
       accuracy: finalAccuracy,
       answers: updatedAnswersDetail,
+      answersDetail: updatedAnswersDetail,
     });
   } else if (game.templateType === TemplateType.SPIN_THE_WHEEL) {
     totalQuestions = content.questions?.length || 0;
@@ -612,6 +643,7 @@ export const finishGame = async (
       ...payload,
       accuracy: finalAccuracy,
       answers: updatedAnswersDetail,
+      answersDetail: updatedAnswersDetail,
     });
   } else if (game.templateType === TemplateType.ESSAY) {
     totalQuestions = content.questions?.length || 0;
@@ -652,6 +684,8 @@ export const finishGame = async (
         if (content.gradingMode === "KEYWORD") {
           console.log("[Smart Grading] Bypassing AI: Menggunakan mode penilaian KEYWORD gratis...");
           const cleanAnswer = studentAnswer.toLowerCase().trim();
+          const IGNORANCE_PATTERNS = /(tidak tahu|belum paham|tidak mengerti|no idea|don't know|kurang tahu|tidak paham|tidak tahu apa)/i;
+
           const matched = (questionObj.keywords || []).filter((kw: string) => {
             const cleanKw = kw.toLowerCase().trim();
             return cleanAnswer.includes(cleanKw);
@@ -660,13 +694,20 @@ export const finishGame = async (
 
           const matchedCount = matched.length;
           const totalKeywords = (questionObj.keywords || []).length;
-          const score = totalKeywords > 0
+          let score = totalKeywords > 0
             ? Math.round((matchedCount / totalKeywords) * 100)
             : 50;
 
+          let justification = `[Mode Gratis] Evaluasi selesai menggunakan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci terdeteksi).`;
+
+          if (IGNORANCE_PATTERNS.test(cleanAnswer)) {
+            score = 0;
+            justification = `[Mode Gratis] Jawaban terdeteksi mengekspresikan ketidaktahuan/penolakan (skor langsung 0).`;
+          }
+
           result = {
             score,
-            justification: `[Mode Gratis] Evaluasi selesai menggunakan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci terdeteksi).`,
+            justification,
             correctAnswer: questionObj.answer || "Tinjau kembali materi untuk jawaban ideal selengkapnya.",
             keywordsMatched: matched,
             keywordsMissing: missing,
@@ -813,10 +854,8 @@ export const finishGame = async (
   // =========================================================================
   if (payload.ltik) {
     console.log(`🎓 [LTI] LTI Token terdeteksi! Mempersiapkan sinkronisasi nilai ke Moodle...`);
-    // TODO: Implementasi LTIJS ScorePublish akan ditaruh di sini nanti
-    /*
     try {
-      await ltijs.Grade.ScorePublish(payload.ltik, {
+      await ltiProvider.Grade.scorePublish(payload.ltik, {
         scoreGiven: Math.round(finalScore),
         scoreMaximum: maxPossibleScore,
         activityProgress: 'Completed',
@@ -826,7 +865,6 @@ export const finishGame = async (
     } catch (e) {
       console.error(`❌ [LTI] Gagal mengirim nilai ke Moodle:`, e);
     }
-    */
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });

@@ -12,6 +12,10 @@ export const generateQuizSchema = z.object({
     "MAZE_CHASE",
     "SPIN_THE_WHEEL",
     "WORD_SEARCH",
+    "MULTIPLE_CHOICE",
+    "TRUE_FALSE",
+    "MATCHING",
+    "ESSAY",
   ]),
   count: z.number().min(1).max(20).default(5),
 });

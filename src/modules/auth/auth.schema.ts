@@ -25,3 +25,10 @@ export const loginSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+
+export const ltiLoginSchema = z.object({
+  email: z.string().email("Invalid email format"),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+});
+
+export type LtiLoginInput = z.infer<typeof ltiLoginSchema>;

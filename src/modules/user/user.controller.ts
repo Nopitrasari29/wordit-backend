@@ -111,3 +111,16 @@ export const deleteUser = async (req: Request, res: Response) => {
     res.status(400).json(errorResponse(message));
   }
 };
+
+// ============================================================
+// GET STUDENT LEADERBOARD (Top Students by XP/totalPoints)
+// ============================================================
+export const getStudentLeaderboard = async (req: Request, res: Response) => {
+  try {
+    const leaderboard = await userService.getStudentLeaderboard();
+    res.status(200).json(successResponse(leaderboard, "Student leaderboard fetched"));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to get student leaderboard";
+    res.status(400).json(errorResponse(message));
+  }
+};

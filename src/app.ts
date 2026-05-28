@@ -17,8 +17,22 @@ app.use(cors({
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"]
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Skip JSON and URL-encoded body parsing for LTI routes to prevent stream conflicts in ltijs
+app.use((req, res, next) => {
+  if (req.path.startsWith("/lti")) {
+    return next();
+  }
+  express.json()(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/lti")) {
+    return next();
+  }
+  express.urlencoded({ extended: true })(req, res, next);
+});
+
 
 // ─── GLOBAL REQUEST LOGGER ──────────────────────────────────────────
 app.use((req, res, next) => {
@@ -36,11 +50,37 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 import { ltiProvider } from "./config/lti"; // ✅ IMPORT LTI PROVIDER
 
+import { rateLimit } from "express-rate-limit";
+
+// Rate limiter untuk mencegah brute-force serangan pada auth
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 menit
+  max: 100, // Limit 100 requests per IP
+  message: {
+    status: "error",
+    message: "Terlalu banyak percobaan masuk dari IP ini. Silakan coba lagi beberapa saat lagi."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiter untuk mencegah eksploitasi kuota token AI
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 menit
+  max: 10, // Limit 10 requests per IP per menit
+  message: {
+    status: "error",
+    message: "Aktivitas AI Anda terlalu padat. Silakan tunggu satu menit."
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ─── REGISTER ROUTES ────────────────────────────────────────────────
-app.use("/api/auth", authRoute);
+app.use("/api/auth", authLimiter, authRoute);
 app.use("/api/users", userRoute);
 app.use("/api/games", gameRoute);
-app.use("/api/ai", aiRoute);
+app.use("/api/ai", aiLimiter, aiRoute);
 app.use("/api/analytics", analyticsRoute); // ✅ 2. DAFTARKAN ROUTE ANALYTICS DI SINI
 
 // ─── LTI ROUTER ─────────────────────────────────────────────────────

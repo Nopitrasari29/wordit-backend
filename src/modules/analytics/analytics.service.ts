@@ -563,7 +563,7 @@ export const getAdminLogs = async (params: {
   const limit = Number(params.limit) || 10;
   const skip = (page - 1) * limit;
 
-  const where: any = {};
+  const where: Prisma.SystemLogWhereInput = {};
   if (params.action) {
     where.action = params.action;
   }
@@ -595,16 +595,13 @@ export const getAdminLogs = async (params: {
     ];
   }
 
-  // @ts-ignore
   const [logs, total] = await Promise.all([
-    // @ts-ignore
     prisma.systemLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
     }),
-    // @ts-ignore
     prisma.systemLog.count({ where }),
   ]);
 

@@ -1,6 +1,6 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import * as gameController from "./game.controller";
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { authMiddleware, optionalAuth } from "../../middleware/auth.middleware";
 
 const router = Router();
 
@@ -11,8 +11,8 @@ router.get("/", gameController.getGames);
 // Mencari game berdasarkan Share Code - HARUS di atas /:id
 router.get("/code/:shareCode", gameController.getGameByCode);
 
-// Detail game by ID
-router.get("/:id", authMiddleware(), gameController.getGameById);
+// Detail game by ID (Sekarang publik dengan optionalAuth)
+router.get("/:id", optionalAuth, gameController.getGameById);
 
 // ═══════════════ PROTECTED ROUTES (TEACHER ONLY) ═══════════════
 router.get("/user/my-games", authMiddleware(["TEACHER"]), gameController.getMyGames);

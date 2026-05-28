@@ -1,7 +1,7 @@
 import { prisma } from "../../config/database";
 import { hashPassword, comparePassword } from "../../utils/hash";
 import { FileManager } from "../../utils/FileManager";
-import { Prisma, Role, ApprovalStatus } from "@prisma/client";
+import { Prisma, Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 import type { UpdateUserInput } from "./user.schema";
 import { createSystemLog } from "../../utils/system-logger";
 
@@ -109,9 +109,17 @@ export const changeUserRole = async (targetUserId: string, newRole: Role, adminU
   if (adminUserId === targetUserId)
     throw new Error("Admin tidak diizinkan mengubah role milik sendiri");
 
+  const dataToUpdate: Prisma.UserUpdateInput = { role: newRole };
+
+  if (newRole === Role.TEACHER && user.educationLevels.length === 0) {
+    dataToUpdate.educationLevels = [EducationLevel.SD];
+  } else if (newRole === Role.STUDENT) {
+    dataToUpdate.educationLevels = [];
+  }
+
   const updated = await prisma.user.update({
     where: { id: targetUserId },
-    data: { role: newRole },
+    data: dataToUpdate,
     select: { id: true, name: true, email: true, role: true },
   });
 
@@ -245,8 +253,87 @@ export const deleteUser = async (userId: string, adminUserId?: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  await prisma.user.delete({ where: { id: userId } });
-  if (user.photoUrl) await FileManager.remove(user.photoUrl);
+  // 1. Dapatkan semua game yang dibuat oleh user ini
+  const gamesCreated = await prisma.game.findMany({
+    where: { creatorId: userId },
+    select: { id: true },
+  });
+  const gameIds = gamesCreated.map((g) => g.id);
+
+  // 2. Dapatkan semua GameSession dari game-game tersebut ATAU yang dimainkan oleh user ini
+  const sessions = await prisma.gameSession.findMany({
+    where: {
+      OR: [
+        { gameId: { in: gameIds } },
+        { userId: userId },
+      ],
+    },
+    select: { id: true },
+  });
+  const sessionIds = sessions.map((s) => s.id);
+
+  // Jalankan transaksi penghapusan berantai
+  await prisma.$transaction(async (tx) => {
+    // A. Hapus Result yang berelasi dengan GameSession
+    if (sessionIds.length > 0) {
+      await tx.result.deleteMany({
+        where: { sessionId: { in: sessionIds } },
+      });
+    }
+
+    // B. Hapus LtiContext yang berelasi dengan Game
+    if (gameIds.length > 0) {
+      await tx.ltiContext.deleteMany({
+        where: { gameId: { in: gameIds } },
+      });
+    }
+
+    // C. Hapus GameSession
+    if (sessionIds.length > 0) {
+      await tx.gameSession.deleteMany({
+        where: { id: { in: sessionIds } },
+      });
+    }
+
+    // D. Hapus Game
+    if (gameIds.length > 0) {
+      await tx.game.deleteMany({
+        where: { id: { in: gameIds } },
+      });
+    }
+
+    // E. Hapus UserProfile (jika ada)
+    await tx.userProfile.deleteMany({
+      where: { userId: userId },
+    });
+
+    // F. Hapus User utama
+    await tx.user.delete({
+      where: { id: userId },
+    });
+  });
+
+  // Hapus file foto profil jika ada
+  if (user.photoUrl) {
+    try {
+      await FileManager.remove(user.photoUrl);
+    } catch (err) {
+      console.error(`⚠️ Gagal menghapus foto profil user:`, err);
+    }
+  }
+
+  // Hapus data leaderboard real-time di Redis untuk game yang terhapus
+  if (gameIds.length > 0) {
+    try {
+      const { redis } = await import("../../config/redis");
+      await Promise.all(
+        gameIds.map((gameId) => redis.del(`leaderboard:${gameId}`))
+      );
+      console.log(`🗑️ Redis leaderboards cleared for user games:`, gameIds);
+    } catch (redisErr) {
+      console.error(`⚠️ Gagal menghapus key Redis leaderboards:`, redisErr);
+    }
+  }
 
   const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
   await createSystemLog({
@@ -258,3 +345,30 @@ export const deleteUser = async (userId: string, adminUserId?: string) => {
 
   return { message: "User deleted successfully" };
 };
+
+// ============================================================
+// 8. GET STUDENT LEADERBOARD (Top 10 Students by XP/totalPoints)
+// ============================================================
+export const getStudentLeaderboard = async () => {
+  return await prisma.user.findMany({
+    where: {
+      role: Role.STUDENT,
+    },
+    select: {
+      id: true,
+      name: true,
+      photoUrl: true,
+      profile: {
+        select: {
+          totalPoints: true,
+        },
+      },
+    },
+    orderBy: {
+      profile: {
+        totalPoints: "desc",
+      },
+    },
+    take: 10,
+  });
+};

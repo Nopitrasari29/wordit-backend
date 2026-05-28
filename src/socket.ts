@@ -199,10 +199,20 @@ export const initSocket = (httpServer: HttpServer) => {
       }
     });
 
-    // 3. 📈 UPDATE SCORE: Live update saat siswa menjawab benar
+    // 3. 📈 UPDATE SCORE: Live update saat siswa menjawab benar/salah
     socket.on(
       "updateScore",
-      ({ code, score }: { code: string; score: number }) => {
+      ({ 
+        code, 
+        score, 
+        accuracy, 
+        progress 
+      }: { 
+        code: string; 
+        score: number; 
+        accuracy?: number; 
+        progress?: string 
+      }) => {
         const roomCode = code?.toUpperCase().trim();
         const room = rooms[roomCode];
 
@@ -210,8 +220,11 @@ export const initSocket = (httpServer: HttpServer) => {
           const playerIndex = room.players.findIndex((p) => p.id === socket.id);
           if (playerIndex !== -1) {
             room.players[playerIndex].score = score;
+            if (accuracy !== undefined) room.players[playerIndex].accuracy = accuracy;
+            if (progress !== undefined) room.players[playerIndex].progress = progress;
+            
             console.log(
-              `📈 [${roomCode}] ${room.players[playerIndex].name}: ${score} pts`
+              `📈 [${roomCode}] ${room.players[playerIndex].name}: ${score} pts (Acc: ${accuracy}%, Prog: ${progress})`
             );
 
             // Kirim balik ke Guru agar ranking berubah real-time
@@ -224,9 +237,16 @@ export const initSocket = (httpServer: HttpServer) => {
     // 4. 🚀 START GAME: Guru menekan tombol Start
     socket.on("startGame", (code: string) => {
       const roomCode = code?.toUpperCase().trim();
-      if (!rooms[roomCode]) return;
+      const room = rooms[roomCode];
+      if (!room) return;
 
-      rooms[roomCode].status = "playing";
+      // Pastikan hanya Host yang bisa memulai game
+      if (room.hostSocketId !== socket.id) {
+        console.warn(`⚠️ [SOCKET] Unauthorized startGame attempt from socket: ${socket.id} in room: ${roomCode}`);
+        return;
+      }
+
+      room.status = "playing";
       console.log(`🚀 START SIGNAL: Room ${roomCode} is now playing.`);
       io.to(roomCode).emit("gameStarted", roomCode);
     });
@@ -237,6 +257,12 @@ export const initSocket = (httpServer: HttpServer) => {
       const room = rooms[roomCode];
 
       if (room) {
+        // Pastikan hanya Host yang bisa menghentikan game
+        if (room.hostSocketId !== socket.id) {
+          console.warn(`⚠️ [SOCKET] Unauthorized finishGame attempt from socket: ${socket.id} in room: ${roomCode}`);
+          return;
+        }
+
         const finalPlayers = room.players;
         console.log(`🏁 FINISH SIGNAL: Saving results for ${roomCode}`);
 
@@ -267,6 +293,17 @@ export const initSocket = (httpServer: HttpServer) => {
               `👨‍🏫 Host disconnected from room [${roomCode}]. Cleaning up room...`
             );
             io.to(roomCode).emit("hostDisconnected");
+            
+            // 🚀 FIX: Tutup database sessions agar tidak menjadi orphaned/menggantung selamanya
+            try {
+              const { saveLeaderboard } = require("./modules/game/game.service");
+              saveLeaderboard(roomCode, room.players).catch((err: any) => {
+                console.error(`❌ Gagal menutup sesi DB otomatis pada host disconnect:`, err);
+              });
+            } catch (importErr) {
+              console.error(`❌ Gagal memanggil saveLeaderboard pada host disconnect:`, importErr);
+            }
+
             // Clear any pending player reconnection timers for this room
             room.players.forEach((p) => {
               const timerKey = `${roomCode}_${p.name}`;

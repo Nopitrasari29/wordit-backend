@@ -19,6 +19,12 @@ export const bot = new Telegraf(botToken || "");
 // Menangkap klik tombol "Approve"
 bot.action(/approve_(.+)/, async (ctx) => {
     try {
+        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID yang bisa menyetujui
+        if (adminId && String(ctx.from?.id) !== String(adminId)) {
+            await ctx.answerCbQuery("Akses ditolak: Anda bukan administrator resmi.", { show_alert: true });
+            return;
+        }
+
         const userId = ctx.match[1];
 
         // Update status di DB via Prisma
@@ -49,6 +55,12 @@ bot.action(/approve_(.+)/, async (ctx) => {
 // Menangkap klik tombol "Reject"
 bot.action(/reject_(.+)/, async (ctx) => {
     try {
+        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID yang bisa menolak
+        if (adminId && String(ctx.from?.id) !== String(adminId)) {
+            await ctx.answerCbQuery("Akses ditolak: Anda bukan administrator resmi.", { show_alert: true });
+            return;
+        }
+
         const userId = ctx.match[1];
 
         const user = await prisma.user.update({

@@ -49,6 +49,18 @@ const preCheckAnswer = (
     };
   }
 
+  // Deteksi ketidaktahuan / penolakan dini untuk menghemat kuota AI
+  const IGNORANCE_PATTERNS = /(tidak tahu|belum paham|tidak mengerti|no idea|don't know|kurang tahu|tidak paham|tidak tahu apa|gatau|ga tau)/i;
+  if (IGNORANCE_PATTERNS.test(trimmed)) {
+    return {
+      score: 0,
+      justification: "Jawaban terdeteksi mengekspresikan ketidaktahuan atau penolakan.",
+      correctAnswer: "",
+      keywordsMatched: [],
+      keywordsMissing: keywords,
+    };
+  }
+
   // ✅ UPDATED: Jumlah kata bermakna minimum 1 kata (min 2 karakter)
   const wordCount = trimmed.split(/\s+/).filter((w) => w.length >= 2).length;
   if (wordCount < MIN_MEANINGFUL_WORDS) {
@@ -244,6 +256,8 @@ OUTPUT HANYA JSON MURNI, TANPA markdown, tanpa penjelasan luar:
         console.error("❌ [Smart Grading Critical]: Seluruh provider gagal. Mengaktifkan sistem fallback kata kunci lokal...");
 
         const cleanAnswer = studentAnswer.toLowerCase().trim();
+        const IGNORANCE_PATTERNS = /(tidak tahu|belum paham|tidak mengerti|no idea|don't know|kurang tahu|tidak paham|tidak tahu apa)/i;
+
         const matched = keywords.filter((kw) => {
           const cleanKw = kw.toLowerCase().trim();
           return cleanAnswer.includes(cleanKw);
@@ -252,14 +266,21 @@ OUTPUT HANYA JSON MURNI, TANPA markdown, tanpa penjelasan luar:
 
         const matchedCount = matched.length;
         const totalKeywords = keywords.length;
-        const fallbackScore =
+        let fallbackScore =
           totalKeywords > 0
             ? Math.round((matchedCount / totalKeywords) * 100)
             : 50;
 
+        let justification = `[Sistem Fallback] Kuis Anda berhasil dinilai berdasarkan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci ditemukan).`;
+
+        if (IGNORANCE_PATTERNS.test(cleanAnswer)) {
+          fallbackScore = 0;
+          justification = `[Sistem Fallback] Jawaban terdeteksi mengekspresikan ketidaktahuan/penolakan (skor langsung 0).`;
+        }
+
         return {
           score: fallbackScore,
-          justification: `[Sistem Fallback] Kuis Anda berhasil dinilai berdasarkan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci ditemukan).`,
+          justification,
           correctAnswer: "Silakan tinjau kembali materi kuliah untuk jawaban ideal selengkapnya.",
           keywordsMatched: matched,
           keywordsMissing: missing,

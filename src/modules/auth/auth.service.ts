@@ -1,7 +1,7 @@
 import { prisma } from "../../config/database";
 import { hashPassword, comparePassword } from "../../utils/hash";
 import { generateToken } from "../../utils/jwt";
-import type { RegisterInput, LoginInput } from "./auth.schema";
+import type { RegisterInput, LoginInput, LtiLoginInput } from "./auth.schema";
 import { Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 import { sendApprovalRequestToTele } from "../../utils/telegram.service"; // ✅ IMPORT BOT TELEGRAM
 import { getIO } from "../../socket"; // ✅ IMPORT SOCKET.IO UNTUK NOTIF ADMIN WEB
@@ -203,4 +203,72 @@ export const logout = async (userId: string) => {
   });
 
   return { message: "Logged out successfully" };
+};
+
+export const ltiLogin = async (data: LtiLoginInput) => {
+  let user = await prisma.user.findUnique({
+    where: { email: data.email },
+  });
+
+  if (!user) {
+    // Registrasi otomatis sebagai STUDENT
+    console.log(`[LTI SSO] User ${data.email} tidak ditemukan. Mendaftarkan akun baru...`);
+    const randomPassword = require("crypto").randomUUID();
+    const hashedPassword = await hashPassword(randomPassword);
+
+    user = await prisma.user.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        password: hashedPassword,
+        role: Role.STUDENT,
+        approvalStatus: ApprovalStatus.APPROVED,
+        educationLevels: [],
+        profile: {
+          create: {
+            bio: "Halo, saya siswa Moodle LTI WordIT!",
+            totalPoints: 0,
+            badges: [],
+          },
+        },
+      },
+    });
+
+    await createSystemLog({
+      action: "REGISTER",
+      details: `${user.name} terdaftar otomatis via Moodle LTI SSO`,
+      userId: user.id,
+      userName: user.name,
+    });
+  }
+
+  if (user.approvalStatus === ApprovalStatus.PENDING) {
+    throw new Error("Akun kamu masih menunggu persetujuan Admin.");
+  }
+
+  await createSystemLog({
+    action: "LOGIN",
+    details: `${user.name} login via Moodle LTI SSO`,
+    userId: user.id,
+    userName: user.name,
+  });
+
+  const token = generateToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      approvalStatus: user.approvalStatus,
+      educationLevels: user.educationLevels,
+      photoUrl: user.photoUrl ?? null,
+    },
+    token,
+  };
 };

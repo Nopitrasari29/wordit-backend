@@ -108,7 +108,7 @@ export const gradeEssayAnswer = async (req: Request, res: Response) => {
 // =====================================================================
 export const getQuotaStatus = async (req: Request, res: Response) => {
   try {
-    const stats = getApiUsageStats();
+    const stats = await getApiUsageStats();
     return res.status(200).json({
       success: true,
       message: "Status kuota AI berhasil diambil.",
