@@ -3,6 +3,7 @@ import {
   generateQuizContent,
   generateFeedbackContent,
   getApiUsageStats,
+  performSmartGrading, 
 } from "./ai.service";
 import { SmartGradingService } from "./smart-grading.service";
 
@@ -82,10 +83,11 @@ export const gradeEssayAnswer = async (req: Request, res: Response) => {
      * Memanggil service AI Smart Grading sesuai struktur Class rekan tim.
      * Return: { score: number, justification: string }
      */
-    const gradingResult = await SmartGradingService.gradeEssay(
+    // ✅ PERBAIKAN: Memanggil performSmartGrading agar filter anti-curang (Gap 2) aktif
+    const gradingResult = await performSmartGrading(
       question,
-      keywords,
       studentAnswer,
+      keywords,
     );
 
     return res.status(200).json({
