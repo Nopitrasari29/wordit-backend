@@ -1,5 +1,5 @@
 import type { Request, Response } from "express"
-import { registerSchema, loginSchema, ltiLoginSchema } from "./auth.schema"
+import { registerSchema, loginSchema, ltiLoginSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema"
 import * as authService from "./auth.service"
 import { successResponse, errorResponse } from "../../utils/response"
 
@@ -63,6 +63,38 @@ export const ltiLogin = async (req: Request, res: Response) => {
     res.status(200).json(successResponse(result, "LTI Login successful"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "LTI Login failed"
+    res.status(400).json(errorResponse(message))
+  }
+}
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const parsed = forgotPasswordSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json(errorResponse("Validation error", parsed.error.flatten().fieldErrors))
+      return
+    }
+
+    await authService.requestPasswordReset(parsed.data.email)
+    res.status(200).json(successResponse(null, "Jika email terdaftar, instruksi reset akan dikirim."))
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal meminta reset password"
+    res.status(400).json(errorResponse(message))
+  }
+}
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const parsed = resetPasswordSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json(errorResponse("Validation error", parsed.error.flatten().fieldErrors))
+      return
+    }
+
+    await authService.resetPassword(parsed.data.token, parsed.data.password)
+    res.status(200).json(successResponse(null, "Password berhasil diperbarui"))
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal mereset password"
     res.status(400).json(errorResponse(message))
   }
 }

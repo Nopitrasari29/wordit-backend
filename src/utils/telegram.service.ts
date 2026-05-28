@@ -1,6 +1,7 @@
 import { Telegraf, Markup } from "telegraf";
 import { prisma } from "../config/database";
 import { getIO } from "../socket";
+import { redis } from "../config/redis";
 
 // Inisialisasi Bot dengan Token dari .env
 const botToken = process.env.TELE_BOT_TOKEN;
@@ -19,8 +20,12 @@ export const bot = new Telegraf(botToken || "");
 // Menangkap klik tombol "Approve"
 bot.action(/approve_(.+)/, async (ctx) => {
     try {
-        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID yang bisa menyetujui
-        if (adminId && String(ctx.from?.id) !== String(adminId)) {
+        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID (grup atau user personal) yang bisa menyetujui
+        const chatId = ctx.chat?.id;
+        const fromId = ctx.from?.id;
+        const isAuthorized = adminId && (String(chatId) === String(adminId) || String(fromId) === String(adminId));
+
+        if (!isAuthorized) {
             await ctx.answerCbQuery("Akses ditolak: Anda bukan administrator resmi.", { show_alert: true });
             return;
         }
@@ -31,6 +36,18 @@ bot.action(/approve_(.+)/, async (ctx) => {
         const user = await prisma.user.update({
             where: { id: userId },
             data: { approvalStatus: "APPROVED" }
+        });
+
+        // Hapus dari Redis jika ada
+        await redis.del(`tele-msg:${userId}`);
+
+        // Buat log sistem
+        const { createSystemLog } = await import("./system-logger");
+        await createSystemLog({
+            action: "APPROVE_TEACHER",
+            details: `Teacher "${user.name}" approved via Telegram Bot (clicked by ${ctx.from?.first_name || "Admin"})`,
+            userId: undefined,
+            userName: `Telegram: ${ctx.from?.first_name || "Admin"}`,
         });
 
         // Ubah pesan di Telegram agar tombolnya hilang
@@ -55,8 +72,12 @@ bot.action(/approve_(.+)/, async (ctx) => {
 // Menangkap klik tombol "Reject"
 bot.action(/reject_(.+)/, async (ctx) => {
     try {
-        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID yang bisa menolak
-        if (adminId && String(ctx.from?.id) !== String(adminId)) {
+        // Validasi pengirim action callback agar hanya TELE_ADMIN_ID (grup atau user personal) yang bisa menolak
+        const chatId = ctx.chat?.id;
+        const fromId = ctx.from?.id;
+        const isAuthorized = adminId && (String(chatId) === String(adminId) || String(fromId) === String(adminId));
+
+        if (!isAuthorized) {
             await ctx.answerCbQuery("Akses ditolak: Anda bukan administrator resmi.", { show_alert: true });
             return;
         }
@@ -66,6 +87,18 @@ bot.action(/reject_(.+)/, async (ctx) => {
         const user = await prisma.user.update({
             where: { id: userId },
             data: { approvalStatus: "REJECTED" }
+        });
+
+        // Hapus dari Redis jika ada
+        await redis.del(`tele-msg:${userId}`);
+
+        // Buat log sistem
+        const { createSystemLog } = await import("./system-logger");
+        await createSystemLog({
+            action: "REJECT_TEACHER",
+            details: `Teacher "${user.name}" rejected via Telegram Bot (clicked by ${ctx.from?.first_name || "Admin"})`,
+            userId: undefined,
+            userName: `Telegram: ${ctx.from?.first_name || "Admin"}`,
         });
 
         await ctx.editMessageText(`❌ *Ditolak!* Pendaftaran *${user.name}* telah ditolak.`, {
@@ -131,16 +164,48 @@ export const sendApprovalRequestToTele = async (user: { id: string; name: string
     const message = `🚨 *GURU BARU DAFTAR!*\n\n*Nama:* ${user.name}\n*Email:* ${user.email}\n*Jenjang:* ${user.educationLevels?.join(", ") || "-"}\n\nSilakan review dan tentukan statusnya:`;
 
     try {
-        await bot.telegram.sendMessage(adminId, message, {
+        const sentMessage = await bot.telegram.sendMessage(adminId, message, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
                 Markup.button.callback("Approve ✅", `approve_${user.id}`),
                 Markup.button.callback("Reject ❌", `reject_${user.id}`)
             ])
         });
-        console.log(`✅ Notifikasi pendaftaran ${user.name} terkirim ke Telegram.`);
+
+        // Simpan message_id ke Redis dengan expiry 7 hari
+        await redis.set(`tele-msg:${user.id}`, sentMessage.message_id, "EX", 604800);
+        console.log(`✅ Notifikasi pendaftaran ${user.name} terkirim ke Telegram (Msg ID: ${sentMessage.message_id}).`);
     } catch (error) {
         console.error("❌ Gagal mengirim notif ke Telegram:", error);
+    }
+};
+
+/**
+ * Update pesan Telegram ketika guru di-approve atau di-reject melalui website.
+ */
+export const updateTelegramMessageStatus = async (userId: string, action: "APPROVE" | "REJECT", userName: string) => {
+    if (!botToken || !adminId) return;
+
+    try {
+        const messageId = await redis.get(`tele-msg:${userId}`);
+        if (!messageId) {
+            console.log(`ℹ️ Tidak ada message_id Telegram di Redis untuk user ${userId} (mungkin sudah kedaluwarsa atau di-approve via Tele)`);
+            return;
+        }
+
+        const statusText = action === "APPROVE"
+            ? `✅ *Selesai!* Guru *${userName}* telah disetujui via Website.`
+            : `❌ *Ditolak!* Pendaftaran *${userName}* telah ditolak via Website.`;
+
+        await bot.telegram.editMessageText(adminId, parseInt(messageId, 10), undefined, statusText, {
+            parse_mode: "Markdown"
+        });
+
+        // Hapus dari Redis setelah berhasil
+        await redis.del(`tele-msg:${userId}`);
+        console.log(`✅ Pesan Telegram untuk ${userName} berhasil di-update dari Website.`);
+    } catch (error) {
+        console.error(`⚠️ Gagal memperbarui pesan Telegram dari website untuk user ${userId}:`, error);
     }
 };
 

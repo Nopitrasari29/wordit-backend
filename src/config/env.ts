@@ -11,6 +11,13 @@ export const env = {
   // 🚀 TAMBAHKAN INI (Satu Pintu)
   databaseUrl: process.env.DATABASE_URL!,
   redisHost: process.env.REDIS_HOST || "localhost",
+  smtpHost: process.env.SMTP_HOST || "",
+  smtpPort: parseInt(process.env.SMTP_PORT || "587", 10),
+  smtpUser: process.env.SMTP_USER || "",
+  smtpPass: process.env.SMTP_PASS || "",
+  smtpSecure: process.env.SMTP_SECURE === "true",
+  smtpFrom: process.env.SMTP_FROM || '"WordIT" <noreply@wordit.local>',
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 }
 
 // Validasi env wajib

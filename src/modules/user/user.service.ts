@@ -86,10 +86,18 @@ export const approveTeacher = async (
   const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
   await createSystemLog({
     action: action === "APPROVE" ? "APPROVE_TEACHER" : "REJECT_TEACHER",
-    details: `Teacher "${updated.name}" is ${action === "APPROVE" ? "approved" : "rejected"} by Admin ${admin?.name || "Admin"}`,
+    details: `Teacher "${updated.name}" is ${action === "APPROVE" ? "approved" : "rejected"} by Admin ${admin?.name || "Admin"} via Website`,
     userId: adminUserId,
     userName: admin?.name || "Admin",
   });
+
+  // Sinkronisasikan status persetujuan ke Telegram
+  try {
+    const { updateTelegramMessageStatus } = await import("../../utils/telegram.service");
+    await updateTelegramMessageStatus(targetUserId, action, updated.name);
+  } catch (teleErr) {
+    console.error("⚠️ Gagal memperbarui status ke Telegram:", teleErr);
+  }
 
   return updated;
 };

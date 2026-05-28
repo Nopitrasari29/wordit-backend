@@ -272,3 +272,69 @@ export const ltiLogin = async (data: LtiLoginInput) => {
     token,
   };
 };
+
+export const requestPasswordReset = async (email: string) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  
+  // Security best practice: Don't reveal if the user exists
+  if (!user) {
+    console.log(`[RESET PASSWORD] Request for non-existent email: ${email}`);
+    return;
+  }
+
+  // Generate a random secure token
+  const crypto = require("crypto");
+  const token = crypto.randomBytes(32).toString("hex");
+
+  // Save token to Redis (key: forgot-token:..., val: email, EX: 3600 sec)
+  const { redis } = await import("../../config/redis");
+  await redis.set(`forgot-token:${token}`, email, "EX", 3600);
+
+  // Send reset email
+  const { env } = await import("../../config/env");
+  const { sendResetPasswordEmail } = await import("../../utils/mailer");
+  const resetLink = `${env.frontendUrl}/reset-password?token=${token}`;
+  
+  await sendResetPasswordEmail(email, resetLink);
+  
+  await createSystemLog({
+    action: "REQUEST_RESET_PASSWORD",
+    details: `User ${user.name} requested password reset`,
+    userId: user.id,
+    userName: user.name,
+  });
+};
+
+export const resetPassword = async (token: string, newPassword: string) => {
+  const { redis } = await import("../../config/redis");
+  
+  // Fetch email from Redis
+  const email = await redis.get(`forgot-token:${token}`);
+  if (!email) {
+    throw new Error("Token reset password tidak valid atau sudah kedaluwarsa.");
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    throw new Error("User tidak ditemukan.");
+  }
+
+  // Hash new password
+  const hashedPassword = await hashPassword(newPassword);
+
+  // Update user in Postgres
+  const updatedUser = await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+  });
+
+  // Delete token from Redis
+  await redis.del(`forgot-token:${token}`);
+
+  await createSystemLog({
+    action: "RESET_PASSWORD",
+    details: `User ${updatedUser.name} successfully reset their password`,
+    userId: updatedUser.id,
+    userName: updatedUser.name,
+  });
+};

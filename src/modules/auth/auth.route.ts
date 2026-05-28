@@ -8,6 +8,8 @@ const router = Router();
 router.post("/register", authController.register);
 router.post("/login", authController.login);
 router.post("/lti-login", authController.ltiLogin);
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
 
 // Protected Routes: Butuh login (semua role boleh akses)
 router.post("/logout", authMiddleware(), authController.logout);
