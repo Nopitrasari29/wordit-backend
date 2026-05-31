@@ -80,15 +80,17 @@ export const getAdminLogs = async (req: Request, res: Response) => {
             return res.status(403).json({ status: "error", message: "Forbidden. Admin only." });
         }
 
-        const { page, limit, action, search, timeRange } = req.query;
+        const { page, limit, action, search, timeRange, dateFrom, dateTo } = req.query;
 
-        const data = await getAdminLogsService({
-            page: page ? parseInt(page as string) : undefined,
-            limit: limit ? parseInt(limit as string) : undefined,
-            action: action as string,
-            search: search as string,
-            timeRange: timeRange as string,
-        });
+  const data = await getAdminLogsService({
+    page: page ? parseInt(page as string) : undefined,
+    limit: limit ? parseInt(limit as string) : undefined,
+    action: action as string,
+    search: search as string,
+    timeRange: timeRange as string,
+    dateFrom: dateFrom as string,
+    dateTo: dateTo as string,
+  });
 
         return res.status(200).json({ status: "success", data });
     } catch (error: any) {
@@ -112,4 +114,4 @@ export const deleteResultForRemedialController = async (req: Request, res: Respo
     } catch (error: any) {
         return res.status(500).json({ status: "error", message: error.message });
     }
-};
+};

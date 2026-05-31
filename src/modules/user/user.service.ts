@@ -211,6 +211,10 @@ export const updateProfile = async (
       email: data.email ?? user.email,
       ...(hashedPassword && { password: hashedPassword }),
       photoUrl: updatedPicturePath,
+      // Hanya update educationLevels jika user adalah TEACHER
+      ...(user.role === "TEACHER" && data.educationLevels && data.educationLevels.length > 0 && {
+        educationLevels: data.educationLevels,
+      }),
     },
     select: {
       id: true,
@@ -379,4 +383,4 @@ export const getStudentLeaderboard = async () => {
     },
     take: 10,
   });
-};
+};
