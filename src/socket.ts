@@ -7,9 +7,26 @@ let io: Server;
  * 🎯 PENAMPUNG DATA REAL-TIME (In-Memory)
  * Struktur: { "OZE0RU": { status: "waiting", players: [{ id: "socketId", name: "Aswalia", score: 0 }] } }
  */
+interface PendingStudent {
+  id: string;
+  name: string;
+}
+
+interface RoomState {
+  status: "waiting" | "playing";
+  players: any[];
+  hostSocketId?: string;
+
+  allowLateJoin: boolean;
+
+  pendingStudents: PendingStudent[];
+
+  kickedStudents: string[];
+}
+
 const rooms: Record<
   string,
-  { status: "waiting" | "playing"; players: any[]; hostSocketId?: string }
+  RoomState
 > = {};
 
 const reconnectTimers: Record<string, NodeJS.Timeout> = {};
@@ -44,35 +61,156 @@ export const initSocket = (httpServer: HttpServer) => {
       console.log(`✅ SUCCESS: Host joined Room [${roomCode}]`);
 
       if (!rooms[roomCode]) {
-        rooms[roomCode] = { status: "waiting", players: [] };
+        rooms[roomCode] = {status: "waiting", players: [], allowLateJoin: true, pendingStudents: [], kickedStudents: [],
+        };
       }
       rooms[roomCode].hostSocketId = socket.id;
 
       io.to(roomCode).emit("updatePlayerList", rooms[roomCode].players);
+
+      // Kirim notifikasi ke Admin
+      io.to("admin").emit("hostJoined", {
+        roomCode,
+        hostSocketId: socket.id,
+
+      });
+      socket.emit(
+        "pendingStudents",
+        rooms[roomCode]
+          .pendingStudents || []
+      );
     });
+
+    socket.on(
+      "setLateJoin",
+      ({
+        roomCode,
+        allowLateJoin,
+      }) => {
+        const room =
+          rooms[roomCode];
+
+        if (!room) return;
+
+        room.allowLateJoin =
+          allowLateJoin;
+
+        console.log(
+          `Late Join ${allowLateJoin}`
+        );
+      }
+    );
 
     // 1b. 👢 KICK PLAYER: Host mengeluarkan siswa dari lobby
     socket.on(
       "kickPlayer",
-      ({ code, playerId }: { code: string; playerId: string }) => {
-        const roomCode = code?.toUpperCase().trim();
-        const room = rooms[roomCode];
-        if (room && room.hostSocketId === socket.id) {
-          const playerIdx = room.players.findIndex((p) => p.id === playerId);
-          if (playerIdx !== -1) {
-            const kickedPlayer = room.players[playerIdx];
-            console.log(`👢 Kicking player [${kickedPlayer.name}] from room [${roomCode}]`);
-            
-            // Hapus dari daftar pemain
-            room.players.splice(playerIdx, 1);
-            
-            // Beritahu client target bahwa dia dikick
-            io.to(playerId).emit("kickedFromLobby");
-            
-            // Update daftar pemain ke semua orang (termasuk Host)
-            io.to(roomCode).emit("updatePlayerList", room.players);
+      ({
+        code,
+        playerId,
+      }: {
+        code: string;
+        playerId: string;
+      }) => {
+
+        console.log(
+          "👢 KICK REQUEST:",
+          {
+            code,
+            playerId,
           }
+        );
+
+        const roomCode =
+          code?.toUpperCase().trim();
+
+        const room =
+          rooms[roomCode];
+
+        console.log(
+          "ROOM PLAYERS:",
+          room?.players
+        );
+
+        if (
+          !room ||
+          room.hostSocketId !== socket.id
+        ) {
+          console.warn(
+            `⚠️ Unauthorized kick attempt from ${socket.id}`
+          );
+          return;
         }
+
+        const playerIdx =
+          room.players.findIndex(
+            (p) => p.id === playerId
+          );
+
+        if (playerIdx === -1) {
+          console.warn(
+            `⚠️ Player ${playerId} not found in room ${roomCode}`
+          );
+          return;
+        }
+
+        const kickedPlayer =
+          room.players[playerIdx];
+
+        console.log(
+          `👢 Kicking player [${kickedPlayer.name}] from room [${roomCode}]`
+        );
+
+        // Simpan blacklist agar tidak bisa join ulang
+        if (
+          !room.kickedStudents.includes(
+            kickedPlayer.name
+          )
+        ) {
+          room.kickedStudents.push(
+            kickedPlayer.name
+          );
+        }
+
+        // Hapus dari ranking room
+        room.players.splice(
+          playerIdx,
+          1
+        );
+
+        // Paksa socket siswa keluar dari room
+        const kickedSocket =
+          io.sockets.sockets.get(
+            playerId
+          );
+
+        if (kickedSocket) {
+          kickedSocket.leave(
+            roomCode
+          );
+
+          console.log(
+            `🚪 Socket ${playerId} left room ${roomCode}`
+          );
+        }
+
+        // Beritahu siswa bahwa dia dikick
+        io.to(playerId).emit(
+          "playerKicked",
+          "Anda telah dikeluarkan dari sesi oleh guru."
+        );
+
+        // Update ranking host & semua peserta
+        io.to(roomCode).emit(
+          "updatePlayerList",
+          room.players
+        );
+
+        console.log(
+          "📡 UPDATE SENT:",
+          room.players.map(
+            (p) => p.name
+          )
+        );
       }
     );
 
@@ -80,10 +218,31 @@ export const initSocket = (httpServer: HttpServer) => {
     socket.on(
       "joinLobby",
       ({ code, playerName }: { code: string; playerName: string }) => {
+
         const roomCode = code?.toUpperCase().trim();
+
+        console.log("=================================");
+        console.log("JOIN LOBBY RECEIVED");
+        console.log("ROOM:", roomCode);
+        console.log("PLAYER:", playerName);
+        console.log("SOCKET:", socket.id);
+        console.log("=================================");
+
         if (!roomCode || !playerName) return;
 
         const room = rooms[roomCode];
+        if (
+          room?.kickedStudents.includes(
+            playerName
+          )
+        ) {
+          socket.emit(
+            "roomError",
+            "Anda telah dikeluarkan dari sesi."
+          );
+
+          return;
+        }
         if (!room || !room.hostSocketId) {
           console.log(`❌ JoinLobby rejected: Room [${roomCode}] does not exist or has no active host.`);
           socket.emit("roomError", "Kode kuis tidak aktif atau tidak ditemukan.");
@@ -95,14 +254,39 @@ export const initSocket = (httpServer: HttpServer) => {
           (p) => p.id === socket.id || p.name === playerName
         );
 
-        if (!isExist) {
-          room.players.push({
-            id: socket.id,
-            name: playerName,
-            score: 0,
-            isOnline: true,
-          });
-        } else {
+    if (!isExist) {
+
+    if (
+      room.status === "playing" &&
+      room.allowLateJoin
+    ) {
+      socket.emit(
+        "gameStarted",
+        roomCode
+      );
+    } else if (room.status === "playing" &&
+      !room.allowLateJoin
+    ) {
+
+        io.to(room.hostSocketId!).emit(
+          "pendingStudents",
+          room.pendingStudents
+        );
+
+        console.log(
+          `⏳ ${playerName} waiting approval`
+        );
+
+        return;
+      }
+
+      room.players.push({
+        id: socket.id,
+        name: playerName,
+        score: 0,
+        isOnline: true,
+      });
+      } else {
           isExist.id = socket.id;
           isExist.isOnline = true;
           // Clear reconnection timer if it exists
@@ -131,9 +315,106 @@ export const initSocket = (httpServer: HttpServer) => {
         io.to(roomCode).emit("updatePlayerList", room.players);
 
         // ✅ FIX (Late Join): Jika status room sudah "playing", beritahu siswa ini agar langsung mulai
-        if (room.status === "playing") {
-          socket.emit("gameStarted", roomCode);
+        if (
+          room.status === "playing"
+        ) {
+          if (
+            room.allowLateJoin
+          ) {
+            socket.emit(
+              "gameStarted",
+              roomCode
+            );
+          } else {
+            room.pendingStudents.push({
+              id: socket.id,
+              name: playerName,
+            });
+
+            io.to(
+              room.hostSocketId!
+            ).emit(
+              "pendingStudent",
+              {
+                id: socket.id,
+                name: playerName,
+              }
+            );
+
+            socket.emit(
+              "waitingApproval"
+            );
+          }
         }
+      }
+    );
+
+    socket.on(
+      "approveStudent",
+      (data: { roomCode: string; studentId: string }) => {
+        const { roomCode, studentId } = data;
+        const room = rooms[roomCode];
+
+        if (!room) return;
+
+        const student =
+          room.pendingStudents?.find(
+            (s) => s.id === studentId
+          );
+
+        if (!student) return;
+
+        room.players.push({
+          id: student.id,
+          name: student.name,
+          score: 0,
+          isOnline: true,
+        });
+        room.pendingStudents =
+          room.pendingStudents.filter(
+            (s) =>
+              s.id !== studentId
+          );
+
+        io.to(room.hostSocketId!).emit(
+          "pendingStudents",
+          room.pendingStudents
+        );
+
+        io.to(roomCode).emit(
+          "updatePlayerList",
+          room.players
+        );
+
+        io.to(studentId).emit(
+          "joinApproved",
+          roomCode
+        );
+      }
+    );
+
+    socket.on(
+      "rejectStudent",
+      (data: { roomCode: string; studentId: string }) => {
+        const { roomCode, studentId } = data;
+        const room = rooms[roomCode];
+
+        if (!room) return;
+
+        room.pendingStudents =
+          room.pendingStudents.filter(
+            (s) =>
+              s.id !== studentId
+          );
+
+        io.to(room.hostSocketId!).emit(
+          "pendingStudents",
+          room.pendingStudents
+        );
+
+        io.to(studentId).emit(
+          "joinRejected"
+        );
       }
     );
 
@@ -158,7 +439,13 @@ export const initSocket = (httpServer: HttpServer) => {
 
       if (playerName) {
         if (!rooms[roomCode]) {
-          rooms[roomCode] = { status: "playing", players: [] };
+          rooms[roomCode] = {
+            status: "playing",
+            players: [],
+            allowLateJoin: true,
+            pendingStudents: [],
+            kickedStudents: [],
+          };
         }
         const room = rooms[roomCode];
         if (room) {
@@ -192,7 +479,13 @@ export const initSocket = (httpServer: HttpServer) => {
               `👤 Player [${playerName}] added to room [${roomCode}] during joinGame`
             );
           }
-
+          console.log(
+            "UPDATE PLAYER LIST:",
+            room.players.map((p) => ({
+              name: p.name,
+              score: p.score,
+            }))
+          );
           // Broadcast updated list to the host and other players
           io.to(roomCode).emit("updatePlayerList", room.players);
         }
