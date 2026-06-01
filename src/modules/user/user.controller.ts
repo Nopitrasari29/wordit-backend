@@ -20,7 +20,9 @@ export const updateProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
     if (!userId) { res.status(401).json(errorResponse("Unauthorized")); return; }
-    const parsed = updateUserSchema.safeParse(req.body);
+    
+const parsed = updateUserSchema.safeParse(req.body);
+
     if (!parsed.success) {
       res.status(400).json(errorResponse("Validation error", parsed.error.flatten().fieldErrors));
       return;
@@ -123,4 +125,4 @@ export const getStudentLeaderboard = async (req: Request, res: Response) => {
     const message = error instanceof Error ? error.message : "Failed to get student leaderboard";
     res.status(400).json(errorResponse(message));
   }
-};
+};

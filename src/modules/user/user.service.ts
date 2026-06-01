@@ -203,6 +203,8 @@ export const updateProfile = async (
       create: { userId, bio: data.bio },
     });
   }
+console.log("DATA EDUCATION LEVELS TO SAVE:", data.educationLevels);
+console.log("USER ROLE:", user.role);
 
   const updated = await prisma.user.update({
     where: { id: userId },
@@ -211,10 +213,9 @@ export const updateProfile = async (
       email: data.email ?? user.email,
       ...(hashedPassword && { password: hashedPassword }),
       photoUrl: updatedPicturePath,
-      // Hanya update educationLevels jika user adalah TEACHER
-      ...(user.role === "TEACHER" && data.educationLevels && data.educationLevels.length > 0 && {
-        educationLevels: data.educationLevels,
-      }),
+      ...(user.role === "TEACHER" && data.educationLevels !== undefined && {
+  educationLevels: data.educationLevels,
+}),
     },
     select: {
       id: true,
