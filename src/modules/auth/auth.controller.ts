@@ -19,6 +19,38 @@ export const register = async (req: Request, res: Response) => {
   }
 }
 
+export const verifyEmail = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const token = req.query.token as string;
+
+    if (!token) {
+      res
+        .status(400)
+        .json(errorResponse("Token verifikasi diperlukan"));
+      return;
+    }
+
+    const result =
+      await authService.verifyEmail(token);
+
+    res
+      .status(200)
+      .json(successResponse(result));
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Verifikasi gagal";
+
+    res
+      .status(400)
+      .json(errorResponse(message));
+  }
+};
+
 export const login = async (req: Request, res: Response) => {
   try {
     const parsed = loginSchema.safeParse(req.body)

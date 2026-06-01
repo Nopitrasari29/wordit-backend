@@ -6,6 +6,9 @@ import { Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 import { sendApprovalRequestToTele } from "../../utils/telegram.service"; // ✅ IMPORT BOT TELEGRAM
 import { getIO } from "../../socket"; // ✅ IMPORT SOCKET.IO UNTUK NOTIF ADMIN WEB
 import { createSystemLog } from "../../utils/system-logger";
+import { sendVerificationEmail } from "../../utils/mailer";
+
+import crypto from "crypto";
 
 export const register = async (data: RegisterInput) => {
   // BE-NEW-03: Admin TIDAK BISA register via endpoint
@@ -25,11 +28,20 @@ export const register = async (data: RegisterInput) => {
   const approvalStatus: ApprovalStatus =
     data.role === "TEACHER" ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED;
 
+  const verificationToken =
+  crypto.randomBytes(32).toString("hex");
+
+  const verificationTokenExpires =
+  new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   const user = await prisma.user.create({
     data: {
       name: data.name,
       email: data.email,
       password: hashedPassword,
+      isVerified: false,
+      verificationToken,
+      verificationTokenExpires,
       role: data.role as Role,
       approvalStatus,
       educationLevels: data.educationLevels
@@ -57,6 +69,10 @@ export const register = async (data: RegisterInput) => {
   // =========================================================
   // 📝 SYSTEM LOG REGISTER
   // =========================================================
+  // Kirim email verifikasi
+  const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+  await sendVerificationEmail(user.email, verificationLink);
+
   await createSystemLog({
     action: "REGISTER",
     details: `${user.name} melakukan registrasi sebagai ${user.role}`,
@@ -128,6 +144,19 @@ export const register = async (data: RegisterInput) => {
 export const login = async (data: LoginInput) => {
   const user = await prisma.user.findUnique({
     where: { email: data.email },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+      name: true,
+      role: true,
+      approvalStatus: true,
+      educationLevels: true,
+      photoUrl: true,
+      isVerified: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   if (!user) throw new Error("Invalid email or password");
@@ -135,6 +164,12 @@ export const login = async (data: LoginInput) => {
   const isMatch = await comparePassword(data.password, user.password);
 
   if (!isMatch) throw new Error("Invalid email or password");
+
+  if (!user.isVerified) {
+    throw new Error(
+      "Email belum diverifikasi. Silakan cek inbox email Anda."
+    );
+  }
 
   // BE-NEW-01: Blokir login jika Teacher belum di-approve
   if (
@@ -337,4 +372,54 @@ export const resetPassword = async (token: string, newPassword: string) => {
     userId: updatedUser.id,
     userName: updatedUser.name,
   });
+};
+
+export const verifyEmail = async (
+  token: string,
+) => {
+  const user = await prisma.user.findFirst({
+    // Prisma generated types may sometimes not include custom fields in the
+    // WhereInput type depending on schema generation; cast to any to avoid
+    // TS error while still performing the lookup at runtime.
+    where: ({ verificationToken: token } as any),
+    select: {
+      id: true,
+      name: true,
+      verificationToken: true,
+      verificationTokenExpires: true,
+    },
+  });
+
+  if (!user) {
+    throw new Error(
+      "Token verifikasi tidak valid."
+    );
+  }
+
+  if (
+    !user.verificationTokenExpires ||
+    (user.verificationTokenExpires as Date) <
+      new Date()
+  ) {
+    throw new Error(
+      "Token verifikasi sudah kadaluarsa."
+    );
+  }
+
+  await prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      isVerified: true,
+      verificationToken: null,
+      verificationTokenExpires:
+        null,
+    },
+  });
+
+  return {
+    message:
+      "Email berhasil diverifikasi.",
+  };
 };

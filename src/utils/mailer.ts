@@ -50,3 +50,37 @@ export const sendResetPasswordEmail = async (toEmail: string, resetLink: string)
     console.log("==================================================\n");
   }
 };
+
+export const sendVerificationEmail = async (toEmail: string, verificationLink: string) => {
+  const mailOptions = {
+    from: env.smtpFrom,
+    to: toEmail,
+    subject: "Verifikasi Email Akun WordIT",
+    html: `
+      <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+        <h2 style="color: #4f46e5; text-align: center;">Verifikasi Email WordIT</h2>
+        <p>Halo,</p>
+        <p>Terima kasih telah mendaftar di WordIT. Untuk mengaktifkan akun Anda, silakan verifikasi alamat email dengan menekan tombol di bawah ini.</p>
+        <div style="text-align:center; margin:30px 0;">
+          <a href="${verificationLink}" style="background-color:#4f46e5; color:white; padding:12px 24px; text-decoration:none; border-radius:9999px; font-weight:bold; display:inline-block;">Verifikasi Email</a>
+        </div>
+        <p>Jika tombol tidak berfungsi, salin link berikut ke browser:</p>
+        <p style="word-break: break-all;"><a href="${verificationLink}">${verificationLink}</a></p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
+        <p style="font-size:12px;color:#64748b;">Link verifikasi berlaku selama 24 jam. Jika Anda tidak membuat akun WordIT, abaikan email ini.</p>
+      </div>
+    `,
+  };
+
+  if (transporter) {
+    await transporter.sendMail(mailOptions);
+    console.log(`✉️ Verification email sent successfully to ${toEmail}`);
+  } else {
+    console.log("\n==================================================");
+    console.log(`✉️ [FALLBACK] VERIFICATION EMAIL NOT SENT (SMTP NOT CONFIGURED)`);
+    console.log(`To      : ${toEmail}`);
+    console.log(`Subject : ${mailOptions.subject}`);
+    console.log(`Link    : ${verificationLink}`);
+    console.log("==================================================\n");
+  }
+};
