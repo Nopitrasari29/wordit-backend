@@ -3,7 +3,6 @@ import { Prisma, EducationLevel, Role, ApprovalStatus } from "@prisma/client";
 
 // =====================================================================
 // 🏅 BADGE COMPUTATION (FE-19 Gamification)
-// Dipanggil dari getStudentAnalytics untuk menghasilkan badge real dari data
 // =====================================================================
 const computeBadges = (
   totalGamesPlayed: number,
@@ -51,9 +50,7 @@ const computeBadges = (
       icon: "⚡",
       color: "bg-yellow-100",
       description: "Selesaikan kuis dalam waktu kurang dari 60 detik",
-      isUnlocked: recentHistory.some(
-        (h) => h.timeSpent > 0 && h.timeSpent < 60,
-      ),
+      isUnlocked: recentHistory.some((h) => h.timeSpent > 0 && h.timeSpent < 60),
     },
     {
       name: "Konsisten",
@@ -63,21 +60,17 @@ const computeBadges = (
       isUnlocked: totalGamesPlayed >= 3 && averageScore >= 70,
     },
   ];
-
   return allBadges;
 };
 
 // =====================================================================
-// 👨‍🎓 STUDENT ANALYTICS (BE-15) - UPDATED FOR SYNC
+// 👨‍🎓 STUDENT ANALYTICS (BE-15)
 // =====================================================================
 export const getStudentAnalytics = async (userId: string) => {
   const stats = await prisma.result.aggregate({
     where: { session: { userId: userId } },
     _avg: { scoreValue: true, accuracy: true },
-    _sum: {
-      timeSpent: true,
-      scoreValue: true, // 🛠️ Tambahkan SUM untuk kalkulasi XP di Frontend
-    },
+    _sum: { timeSpent: true, scoreValue: true },
     _max: { scoreValue: true },
     _count: { id: true },
   });
@@ -92,7 +85,6 @@ export const getStudentAnalytics = async (userId: string) => {
     take: 5,
   });
 
-  // 🏅 FE-19: Hitung badge real dari data aktual siswa
   const recentForBadge = recentHistory.map((s) => ({
     score: s.result?.scoreValue || 0,
     timeSpent: s.result?.timeSpent || 0,
@@ -109,7 +101,6 @@ export const getStudentAnalytics = async (userId: string) => {
     _min: { scoreValue: true }
   });
 
-  // Calculate most frequent missed question
   const allResults = await prisma.result.findMany({
     where: { session: { userId: userId } },
     select: { answersDetail: true }
@@ -141,7 +132,7 @@ export const getStudentAnalytics = async (userId: string) => {
       lowestScore: lowestScore._min.scoreValue || 0,
       averageScore: Math.round(stats._avg.scoreValue || 0),
       averageAccuracy: Math.round(stats._avg.accuracy || 0),
-      totalXp: stats._sum.scoreValue || 0, // 🛠️ Kirim total akumulasi skor ke FE
+      totalXp: stats._sum.scoreValue || 0, 
       totalTimeSpentSeconds: stats._sum.timeSpent || 0,
       mostFrequentMistake: mostFrequentMistake
     },
@@ -155,52 +146,59 @@ export const getStudentAnalytics = async (userId: string) => {
       timeSpent: session.result?.timeSpent || 0,
       finishedAt: session.finishedAt,
     })),
-    // 🏅 FE-19: Badge gamifikasi dikalkulasi real dari data DB
     badges,
   };
 };
 
-// ... (logika teacher dan adaptive difficulty tetap sama sesuai file asli Anda)
-
 // =====================================================================
-// 👨‍🏫 TEACHER ANALYTICS (BE-16)
+// 👨‍🏫 TEACHER ANALYTICS (BE-16 - GAME SPECIFIC FOR DASHBOARD SELECT)
 // =====================================================================
-export const getGameAnalyticsForTeacher = async (
-  gameId: string,
-  creatorId: string,
-) => {
-  // 1. Verifikasi Kepemilikan Game
+export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: string) => {
   const game = await prisma.game.findUnique({
     where: { id: gameId },
-    select: { id: true, title: true, creatorId: true },
+    select: { id: true, title: true, creatorId: true, gameJson: true },
   });
 
   if (!game || game.creatorId !== creatorId) {
     throw new Error("Game tidak ditemukan atau kamu tidak memiliki akses.");
   }
 
-  // 2. Ambil Semua Hasil (Result) untuk Game ini
   const results = await prisma.result.findMany({
     where: { session: { gameId } },
-    include: { session: { include: { user: { select: { name: true } } } } },
+    select: {
+      sessionId: true,
+      scoreValue: true,
+      accuracy: true,
+      answersDetail: true,
+    },
   });
 
-  const groupStats: Record<string, { totalScore: number; count: number }> = {};
+  const sessionIds = results.map((res) => res.sessionId);
+  const sessions = await prisma.gameSession.findMany({
+    where: { id: { in: sessionIds } },
+    select: { id: true, playerName: true }, 
+  });
+  
+  const sessionNameMap: Record<string, string> = Object.fromEntries(
+    sessions.map((session) => [session.id, session.playerName || "TANPA_NAMA"]),
+  );
+
+  const groupStats: Record<string, { totalScore: number; totalAccuracy: number; count: number }> = {};
   const questionMistakes: Record<number, number> = {};
 
   results.forEach((res) => {
-    // A. Pengelompokan Otomatis via Regex (Contoh: "Kelas_3A_Nopi")
-    const playerName = res.session.user.name;
-    const match = playerName.match(/^([^_]+)_/);
+    const currentName = sessionNameMap[res.sessionId] || "TANPA_NAMA";
+    const match = currentName.match(/^([^_]+)_/);
     const className = match?.[1]?.toUpperCase() || "TANPA_KELAS";
 
-    if (!groupStats[className])
-      groupStats[className] = { totalScore: 0, count: 0 };
+    if (!groupStats[className]) {
+      groupStats[className] = { totalScore: 0, totalAccuracy: 0, count: 0 };
+    }
     const entry = groupStats[className]!;
     entry.totalScore += res.scoreValue;
+    entry.totalAccuracy += res.accuracy || 0;
     entry.count += 1;
 
-    // B. Deteksi Soal Tersulit (Parsing answersDetail)
     const answers = (res.answersDetail as any[]) || [];
     answers.forEach((ans: any) => {
       if (ans.isCorrect === false) {
@@ -210,177 +208,217 @@ export const getGameAnalyticsForTeacher = async (
     });
   });
 
-  // 3. Formatting Data untuk Chart
   const classDistribution = Object.entries(groupStats).map(([name, data]) => ({
     groupName: name,
     averageScore: Math.round(data.totalScore / data.count),
+    averageAccuracy: Math.round(data.totalAccuracy / data.count),
     studentCount: data.count,
   }));
 
+  const gameContent = game.gameJson as any;
+  const questionsList = gameContent?.questions || gameContent?.words || gameContent?.cards || [];
+
   const difficultQuestions = Object.entries(questionMistakes)
-    .map(([idx, count]) => ({
-      questionIndex: parseInt(idx),
-      mistakeCount: count,
-    }))
+    .map(([idx, count]) => {
+      const qIndex = parseInt(idx);
+      let questionText = `Pertanyaan #${qIndex + 1}`;
+      const targetQuestion = questionsList[qIndex];
+      if (targetQuestion) {
+        questionText = targetQuestion.question || targetQuestion.word || targetQuestion.front || questionText;
+      }
+      return {
+        questionIndex: qIndex,
+        questionText,
+        mistakeCount: count,
+      };
+    })
     .sort((a, b) => b.mistakeCount - a.mistakeCount);
+
+  const allStudentsData = results.map((r) => {
+    const currentName = sessionNameMap[r.sessionId] || "Anonymous";
+    const match = currentName.match(/^([^_]+)_/);
+    return {
+      id: r.sessionId,
+      name: currentName,
+      className: match?.[1]?.toUpperCase() || "TANPA_KELAS",
+      gameName: game.title,
+      score: r.scoreValue,
+      accuracy: r.accuracy ?? 0,
+    };
+  });
+
+  const atRiskStudents = allStudentsData.filter((student) => student.accuracy < 70);
 
   return {
     gameTitle: game.title,
     summary: {
       totalParticipants: results.length,
-      averageAccuracy:
-        results.length > 0
-          ? Math.round(
-            results.reduce((acc, r) => acc + r.accuracy, 0) / results.length,
-          )
-          : 0,
+      averageAccuracy: results.length > 0 ? Math.round(results.reduce((acc, r) => acc + r.accuracy, 0) / results.length) : 0,
     },
     classDistribution,
-    difficultQuestions: difficultQuestions.slice(0, 5), // Ambil Top 5 soal tersulit
+    difficultQuestions: difficultQuestions.slice(0, 5),
+    allStudentsData,
+    atRiskStudents,
   };
 };
 
+// ═════════════════════════════════════════════════════════════════════
+// 🏫 GET TEACHER CLASSES ANALYTICS (GLOBAL REPORT ACTION)
+// ═════════════════════════════════════════════════════════════════════
 export const getTeacherClassesAnalytics = async (teacherId: string, educationLevel?: string, classGrade?: string) => {
   const whereFilter: Prisma.GameWhereInput = { creatorId: teacherId };
   if (educationLevel && educationLevel !== "ALL") {
     whereFilter.educationLevel = educationLevel as EducationLevel;
   }
   if (classGrade && classGrade !== "ALL") {
-    whereFilter.classGrade = {
-      contains: classGrade,
-      mode: "insensitive",
-    };
+    whereFilter.classGrade = { contains: classGrade, mode: "insensitive" };
   }
 
   const games = await prisma.game.findMany({
     where: whereFilter,
-    select: { id: true, title: true },
+    select: { id: true, title: true, gameJson: true },
   });
 
   const gameIds = games.map((g) => g.id);
+  const gameJsonMap: Record<string, any> = {};
+  games.forEach((g) => { gameJsonMap[g.id] = g.gameJson; });
 
-  // ✅ FIX FE-20: Filter agar akun pembuat game (guru ybs) tidak masuk hitungan
   const results = await prisma.result.findMany({
     where: {
-      session: {
-        gameId: { in: gameIds },
-        user: { id: { not: teacherId } }
-      },
+      session: { gameId: { in: gameIds }, userId: { not: teacherId } },
     },
     include: {
       session: {
-        include: {
-          user: { select: { id: true, name: true, role: true } },
+        select: {
+          id: true,
+          playerName: true, 
+          userId: true,     
+          gameId: true,
           game: { select: { title: true } },
         },
       },
     },
   });
 
-  // ✅ FIX FE-20: Auto-grouping berdasarkan format "kelas_nama", dipisah dengan "_" atau " " atau "-"
-  // Jika tidak bisa di-group, masuk grup "UMUM"
   const extractGroup = (playerName: string): string => {
-    // Regex for grabbing anything before the first underscore, space, or hyphen
     const match = playerName.match(/^(.+?)[_\-\s]/);
     const groupName = match?.[1]?.trim();
     return groupName ? groupName.toUpperCase() : "UMUM";
   };
 
-  // Kelompokkan hasil berdasarkan prefix nama pemain
-  const groupMap: Record<
-    string,
-    {
-      totalScore: number;
-      totalAccuracy: number;
-      count: number;
-      studentIds: Set<string>;
-    }
-  > = {};
+  const groupMap: Record<string, { totalScore: number; totalAccuracy: number; count: number; studentIdentifiers: Set<string> }> = {};
+  const questionMistakes: Record<string, { count: number; text: string }> = {};
 
   results.forEach((r) => {
-    const group = extractGroup(r.session.user.name);
+    const pName = r.session.playerName || "UMUM_PLAYER";
+    const group = extractGroup(pName);
+    
     if (!groupMap[group]) {
-      groupMap[group] = {
-        totalScore: 0,
-        totalAccuracy: 0,
-        count: 0,
-        studentIds: new Set(),
-      };
+      groupMap[group] = { totalScore: 0, totalAccuracy: 0, count: 0, studentIdentifiers: new Set() };
     }
     const entry = groupMap[group]!;
     entry.totalScore += r.scoreValue;
     entry.totalAccuracy += r.accuracy ?? 0;
     entry.count += 1;
-    entry.studentIds.add(r.session.user.id);
+    entry.studentIdentifiers.add(r.session.userId || pName);
+
+    // Hitung soal tersulit global dengan ekstraksi teks pertanyaan dinamis
+    const answers = (r.answersDetail as any[]) || [];
+    const gJson = gameJsonMap[r.session.gameId];
+    const questionsList = gJson?.questions || gJson?.words || gJson?.cards || [];
+
+    answers.forEach((ans: any) => {
+      if (ans.isCorrect === false) {
+        const idx = ans.questionIndex;
+        const key = `${r.session.gameId}_${idx}`;
+        let txt = ans.question || `Pertanyaan #${idx + 1}`;
+        if (questionsList[idx]) {
+          txt = questionsList[idx].question || questionsList[idx].word || questionsList[idx].front || txt;
+        }
+        if (!questionMistakes[key]) {
+          questionMistakes[key] = { count: 0, text: txt };
+        }
+        questionMistakes[key]!.count += 1;
+      }
+    });
   });
 
   const classesData = Object.entries(groupMap).map(([groupName, data]) => ({
-    id: groupName, // Gunakan nama grup sebagai ID
+    id: groupName,
     name: groupName,
-    students: data.studentIds.size,
+    students: data.studentIdentifiers.size,
     averageScore: data.count > 0 ? Math.round(data.totalScore / data.count) : 0,
-    averageAccuracy:
-      data.count > 0 ? Math.round(data.totalAccuracy / data.count) : 0,
+    averageAccuracy: data.count > 0 ? Math.round(data.totalAccuracy / data.count) : 0,
     totalPlays: data.count,
     icon: "🏫",
   }));
 
-  // ✅ FIX: atRiskStudents juga hanya dari STUDENT, dengan nama grup
   const atRiskStudents = results
-    .filter((r) => r.scoreValue < 60)
-    .map((r) => ({
+    .filter((r) => (r.accuracy ?? 0) < 70) 
+    .map((r) => {
+      const currentName = r.session.playerName || "Anonymous";
+      return {
+        id: r.id,
+        name: currentName, 
+        className: extractGroup(currentName),
+        gameName: r.session.game.title,
+        score: r.scoreValue,
+        issue: (r.accuracy ?? 0) < 50 ? "Akurasi sangat rendah" : "Nilai di bawah batas KKM kuis",
+      };
+    })
+    .slice(0, 10);
+
+  const allStudentsData = results.map((r) => {
+    const currentName = r.session.playerName || "Anonymous";
+    return {
       id: r.id,
-      name: r.session.user.name,
-      className: extractGroup(r.session.user.name),
+      name: currentName, 
+      className: extractGroup(currentName),
       gameName: r.session.game.title,
       score: r.scoreValue,
-      issue:
-        (r.accuracy ?? 0) < 50
-          ? "Akurasi rendah"
-          : "Skor di bawah batas minimal",
+      accuracy: r.accuracy ?? 0,
+    };
+  });
+
+  const difficultQuestions = Object.entries(questionMistakes)
+    .map(([key, q]) => ({
+      questionIndex: parseInt(key.split("_")[1]!),
+      questionText: q.text,
+      mistakeCount: q.count
     }))
-    .slice(0, 10);
+    .sort((a, b) => b.mistakeCount - a.mistakeCount)
+    .slice(0, 5);
 
   return {
     classes: classesData,
     atRiskStudents,
+    allStudentsData,
+    difficultQuestions
   };
 };
 
 // =====================================================================
 // 🧠 ADAPTIVE DIFFICULTY LOGIC (BE-18)
 // =====================================================================
-export const getAdaptiveDifficulty = async (
-  userId: string,
-): Promise<"EASY" | "MEDIUM" | "HARD"> => {
-  // 1. Ambil 3 hasil permainan terakhir
+export const getAdaptiveDifficulty = async (userId: string): Promise<"EASY" | "MEDIUM" | "HARD"> => {
   const lastResults = await prisma.result.findMany({
     where: { session: { userId } },
     orderBy: { completedAt: "desc" },
     take: 3,
     select: { scoreValue: true },
   });
-
-  // Jika belum pernah main atau data kurang dari 3, default ke MEDIUM
   if (lastResults.length < 3) return "MEDIUM";
-
-  // 2. Hitung rata-rata skor dari 3 game terakhir
-  const avgScore =
-    lastResults.reduce((acc, res) => acc + res.scoreValue, 0) / 3;
-
-  // 3. Logika Penyesuaian
+  const avgScore = lastResults.reduce((acc, res) => acc + res.scoreValue, 0) / 3;
   if (avgScore > 85) return "HARD";
   if (avgScore > 60) return "MEDIUM";
-
   return "EASY";
 };
 
 // =====================================================================
-// 👑 ADMIN ANALYTICS
+// 👑 ADMIN ANALYTICS & LOG MANAGEMENT
 // =====================================================================
 export const getAdminStats = async () => {
   try {
-    // Buat rentang 7 hari ke belakang untuk tren sesi harian
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const sevenDaysAgo = new Date();
@@ -410,7 +448,6 @@ export const getAdminStats = async () => {
       prisma.game.count({ where: { isPublished: true } }),
       prisma.game.count({ where: { isPublished: false } }),
       prisma.gameSession.count({ where: { isCompleted: true } }),
-      // Top 5 game paling sering dimainkan
       prisma.game.findMany({
         where: { isPublished: true },
         orderBy: { playCount: "desc" },
@@ -423,13 +460,11 @@ export const getAdminStats = async () => {
           creator: { select: { name: true } },
         },
       }),
-      // Distribusi game per template type
       prisma.game.groupBy({
         by: ["templateType"],
         _count: { id: true },
         orderBy: { _count: { id: "desc" } },
       }),
-      // Top 5 guru paling aktif (berdasarkan jumlah game yang dibuat)
       prisma.user.findMany({
         where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.APPROVED },
         select: {
@@ -441,23 +476,17 @@ export const getAdminStats = async () => {
         orderBy: { gamesCreated: { _count: "desc" } },
         take: 5,
       }),
-      // Distribusi game per education level
       prisma.game.groupBy({
         by: ["educationLevel"],
         _count: { id: true },
         orderBy: { _count: { id: "desc" } },
       }),
-      // Sesi yang selesai dalam 7 hari terakhir (untuk tren harian)
       prisma.gameSession.findMany({
-        where: {
-          isCompleted: true,
-          finishedAt: { gte: sevenDaysAgo, lte: today },
-        },
+        where: { isCompleted: true, finishedAt: { gte: sevenDaysAgo, lte: today } },
         select: { finishedAt: true },
       }),
     ]);
 
-    // Format top games
     const topGames = topGamesRaw.map((g) => ({
       id: g.id,
       title: g.title,
@@ -466,13 +495,11 @@ export const getAdminStats = async () => {
       creatorName: g.creator?.name || "—",
     }));
 
-    // Format template distribution
     const templateDistribution = templateDistRaw.map((t) => ({
       templateType: t.templateType,
       count: t._count.id,
     }));
 
-    // Format top teachers
     const topTeachers = topTeachersRaw.map((t) => ({
       id: t.id,
       name: t.name,
@@ -480,23 +507,19 @@ export const getAdminStats = async () => {
       gameCount: t._count.gamesCreated,
     }));
 
-    // Format education level distribution
     const levelDistribution = levelDistRaw.map((l) => ({
       level: l.educationLevel,
       count: l._count.id,
     }));
 
-    // Hitung sesi per hari selama 7 hari terakhir
     const DAYS_ID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
     const dailyMap: Record<string, number> = {};
-    // Inisialisasi 7 hari dengan angka 0
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split("T")[0]!; // "YYYY-MM-DD"
+      const key = d.toISOString().split("T")[0]!; 
       dailyMap[key] = 0;
     }
-    // Isi dengan data nyata
     recentSessionsRaw.forEach((s) => {
       if (s.finishedAt) {
         const key = s.finishedAt.toISOString().split("T")[0]!;
@@ -507,27 +530,14 @@ export const getAdminStats = async () => {
     });
     const last7DaysSessions = Object.entries(dailyMap).map(([date, count]) => {
       const d = new Date(date);
-      return {
-        date,
-        label: DAYS_ID[d.getDay()] || date,
-        count,
-      };
+      return { date, label: DAYS_ID[d.getDay()] || date, count };
     });
 
     return {
       totalUsers,
       totalStudents,
-      teachers: {
-        approved: totalTeachersApproved,
-        pending: totalTeachersPending,
-        rejected: totalTeachersRejected,
-        total: totalTeachersApproved + totalTeachersPending + totalTeachersRejected,
-      },
-      games: {
-        published: totalGamesPublished,
-        draft: totalGamesDraft,
-        total: totalGamesPublished + totalGamesDraft,
-      },
+      teachers: { approved: totalTeachersApproved, pending: totalTeachersPending, rejected: totalTeachersRejected, total: totalTeachersApproved + totalTeachersPending + totalTeachersRejected },
+      games: { published: totalGamesPublished, draft: totalGamesDraft, total: totalGamesPublished + totalGamesDraft },
       totalSessions,
       topGames,
       templateDistribution,
@@ -538,54 +548,29 @@ export const getAdminStats = async () => {
   } catch (e: any) {
     console.error("⚠️ [AdminStats] Error:", e.message);
     return {
-      totalUsers: 0,
-      totalStudents: 0,
+      totalUsers: 0, totalStudents: 0,
       teachers: { approved: 0, pending: 0, rejected: 0, total: 0 },
       games: { published: 0, draft: 0, total: 0 },
-      totalSessions: 0,
-      topGames: [],
-      templateDistribution: [],
-      topTeachers: [],
-      levelDistribution: [],
-      last7DaysSessions: [],
+      totalSessions: 0, topGames: [], templateDistribution: [], topTeachers: [], levelDistribution: [], last7DaysSessions: []
     };
   }
 };
 
-export const getAdminLogs = async (params: {
-  page?: number;
-  limit?: number;
-  action?: string;
-  search?: string;
-  timeRange?: string;
-}) => {
+export const getAdminLogs = async (params: { page?: number; limit?: number; action?: string; search?: string; timeRange?: string; }) => {
   const page = Number(params.page) || 1;
   const limit = Number(params.limit) || 10;
   const skip = (page - 1) * limit;
-
   const where: Prisma.SystemLogWhereInput = {};
-  if (params.action) {
-    where.action = params.action;
-  }
+  if (params.action) where.action = params.action;
 
   if (params.timeRange && params.timeRange !== "ALL") {
     const now = new Date();
     let startDate: Date | null = null;
-    if (params.timeRange === "yesterday") {
-      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    } else if (params.timeRange === "week") {
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    } else if (params.timeRange === "month") {
-      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    } else if (params.timeRange === "2months") {
-      startDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-    }
-
-    if (startDate) {
-      where.createdAt = {
-        gte: startDate,
-      };
-    }
+    if (params.timeRange === "yesterday") startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    else if (params.timeRange === "week") startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    else if (params.timeRange === "month") startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else if (params.timeRange === "2months") startDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    if (startDate) where.createdAt = { gte: startDate };
   }
   if (params.search) {
     where.OR = [
@@ -594,79 +579,41 @@ export const getAdminLogs = async (params: {
       { details: { contains: params.search, mode: 'insensitive' } },
     ];
   }
-
   const [logs, total] = await Promise.all([
-    prisma.systemLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-    }),
+    prisma.systemLog.findMany({ where, orderBy: { createdAt: "desc" }, skip, take: limit }),
     prisma.systemLog.count({ where }),
   ]);
-
-  return {
-    logs,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
+  return { logs, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
 };
 
 // =====================================================================
 // 🔄 REMEDIAL / RESET SESSION (TEACHER ACTION)
 // =====================================================================
 export const deleteResultForRemedial = async (resultId: string, teacherId: string) => {
-  // 1. Dapatkan result beserta session dan game-nya untuk memastikan game ini milik si guru (teacherId)
   const result = await prisma.result.findUnique({
     where: { id: resultId },
-    include: {
-      session: {
-        include: {
-          game: true,
-          user: { select: { name: true } }
-        }
-      }
-    }
+    include: { session: { include: { game: true, user: { select: { name: true } } } } }
   });
+  if (!result) throw new Error("Data hasil tidak ditemukan");
+  if (result.session.game.creatorId !== teacherId) throw new Error("Unauthorized: Kuis ini bukan buatan Anda");
 
-  if (!result) {
-    throw new Error("Data hasil tidak ditemukan");
-  }
-
-  if (result.session.game.creatorId !== teacherId) {
-    throw new Error("Unauthorized: Kuis ini bukan buatan Anda");
-  }
-
-  // 2. Hapus dalam transaction yang aman
   await prisma.$transaction(async (tx) => {
-    // Hapus result
-    await tx.result.delete({
-      where: { id: resultId }
-    });
-    // Hapus session
-    await tx.gameSession.delete({
-      where: { id: result.sessionId }
-    });
+    await tx.result.delete({ where: { id: resultId } });
+    await tx.gameSession.delete({ where: { id: result.sessionId } });
   });
 
-  // Log system log
   try {
     const { createSystemLog } = require("../../utils/system-logger");
     const user = await prisma.user.findUnique({ where: { id: teacherId } });
+    const studentDisplayName = result.session.user?.name || result.session.playerName || "Anonymous Student";
     await createSystemLog({
       action: "REMEDIAL_ASSIGNED",
-      details: `Remedial ditugaskan ke siswa "${result.session.user.name}" untuk game "${result.session.game.title}". Hasil kuis lama dihapus.`,
+      details: `Remedial ditugaskan ke siswa "${studentDisplayName}" untuk game "${result.session.game.title}". Hasil kuis lama dihapus.`,
       userId: teacherId,
       userName: user?.name || "Unknown",
     });
   } catch (logErr) {
     console.error("Gagal mencatat log remedial:", logErr);
   }
-
   return { success: true };
 };
-

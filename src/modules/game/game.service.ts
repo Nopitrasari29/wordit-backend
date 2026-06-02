@@ -142,7 +142,6 @@ export const updateGame = async (
   if (!game) throw new Error("Game not found");
   if (game.creatorId !== userId) throw new Error("Unauthorized");
 
-  // Validasi jika jenjang pendidikan (educationLevel) diubah
   if (data.educationLevel) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
@@ -181,37 +180,30 @@ export const deleteGame = async (gameId: string, userId: string) => {
   if (!game) throw new Error("Game not found");
   if (game.creatorId !== userId) throw new Error("Unauthorized");
 
-  // Cari semua session ID untuk game ini
   const sessions = await prisma.gameSession.findMany({
     where: { gameId },
     select: { id: true },
   });
   const sessionIds = sessions.map((s) => s.id);
 
-  // Jalankan penghapusan berantai dalam satu transaksi yang aman
   await prisma.$transaction(async (tx) => {
-    // 0. Hapus LtiContext terlebih dahulu untuk menghindari Foreign Key Violation
     await tx.ltiContext.deleteMany({
       where: { gameId },
     });
 
     if (sessionIds.length > 0) {
-      // 1. Hapus Results yang menginduk ke GameSession
       await tx.result.deleteMany({
         where: { sessionId: { in: sessionIds } },
       });
 
-      // 2. Hapus GameSessions yang menginduk ke Game
       await tx.gameSession.deleteMany({
         where: { gameId },
       });
     }
 
-    // 3. Terakhir, baru hapus Game utamanya
     await tx.game.delete({ where: { id: gameId } });
   });
 
-  // Hapus data leaderboard real-time di Redis jika ada
   try {
     await redis.del(`leaderboard:${gameId}`);
     console.log(`🗑️ Redis leaderboard key leaderboard:${gameId} cleared.`);
@@ -266,28 +258,36 @@ export const getMyGames = async (userId: string) => {
 
 // ═══════════════ GAME PLAYER ENGINE ═══════════════
 
-export const startGame = async (gameId: string, userId: string) => {
+export const startGame = async (gameId: string, userId: string, playerName?: string) => {
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game || !game.isPublished) throw new Error("Game tidak tersedia");
 
-  // 🧠 PANGGIL LOGIKA ADAPTIVE DIFFICULTY
   const recommendedDifficulty = await getAdaptiveDifficulty(userId);
-  console.log(
-    `🧠 Adaptive Difficulty untuk User ${userId}: Direkomendasikan level ${recommendedDifficulty}`,
-  );
 
   const existingSession = await prisma.gameSession.findFirst({
-    where: { gameId, userId, isCompleted: false },
+    where: { gameId, userId },
     orderBy: { startedAt: "desc" },
   });
 
   if (existingSession) {
-    console.log(`♻️  Reusing existing session: ${existingSession.id}`);
-    return { ...existingSession, recommendedDifficulty };
+    console.log(`♻️  Menggunakan kembali & menyinkronkan sesi kuis: ${existingSession.id}`);
+    
+    const updatedSession = await prisma.gameSession.update({
+      where: { id: existingSession.id },
+      data: { 
+        playerName: playerName || "Guest",
+        isCompleted: false 
+      },
+    });
+    return { ...updatedSession, recommendedDifficulty };
   }
 
   const session = await prisma.gameSession.create({
-    data: { gameId, userId },
+    data: { 
+      gameId, 
+      userId,
+      playerName: playerName || "Guest"
+    },
   });
 
   await prisma.game.update({
@@ -298,9 +298,6 @@ export const startGame = async (gameId: string, userId: string) => {
   return { ...session, recommendedDifficulty };
 };
 
-/**
- * submitAnswer: Update skor real-time via Redis + Socket.
- */
 export const submitAnswer = async (
   gameId: string,
   userId: string,
@@ -323,76 +320,34 @@ export const submitAnswer = async (
 
   switch (game.templateType) {
     case TemplateType.ANAGRAM:
-      isCorrect = AnagramService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = AnagramService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.FLASHCARD:
-      isCorrect = FlashcardService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = FlashcardService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.HANGMAN:
-      isCorrect = HangmanService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = HangmanService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.WORD_SEARCH:
-      isCorrect = WordSearchService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = WordSearchService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.MAZE_CHASE:
-      isCorrect = MazeChaseService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = MazeChaseService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.SPIN_THE_WHEEL:
-      isCorrect = SpinTheWheelService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = SpinTheWheelService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
-
-    // ✅ NEW STANDARD ASSESSMENT INTEGRATION
     case TemplateType.MULTIPLE_CHOICE:
-      isCorrect = MultipleChoiceService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = MultipleChoiceService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.TRUE_FALSE:
-      isCorrect = TrueFalseService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = TrueFalseService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.MATCHING:
-      isCorrect = MatchingService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = MatchingService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.ESSAY:
-      isCorrect = EssayService.verifyAnswer(
-        game.gameJson,
-        questionIndex,
-        selectedAnswer,
-      );
+      isCorrect = EssayService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
       break;
     default:
       isCorrect = false;
@@ -400,12 +355,10 @@ export const submitAnswer = async (
 
   const score = earnedPoints !== undefined ? earnedPoints : isCorrect ? 100 : 0;
 
-  // Update Redis leaderboard real-time
   const redisKey = `leaderboard:${gameId}`;
   const identity = playerName || userId;
   await redis.zincrby(redisKey, score, identity);
 
-  // Broadcast ke room
   const rawTopScores = await redis.zrevrange(redisKey, 0, 9, "WITHSCORES");
   const formattedScores: { name: string; score: number }[] = [];
   for (let i = 0; i < rawTopScores.length; i += 2) {
@@ -427,9 +380,6 @@ export const submitAnswer = async (
   return { isCorrect, score };
 };
 
-/**
- * finishGame: Simpan SKOR FINAL ke tabel Result (1x per sesi) + tutup sesi.
- */
 export const finishGame = async (
   gameId: string,
   userId: string,
@@ -455,17 +405,17 @@ export const finishGame = async (
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) throw new Error("Game tidak ditemukan");
 
-  let finalScore = payload.scoreValue;
-  let finalAccuracy = payload.accuracy;
+  // 🛠️ FIX SINKRONISASI UTAMA: Ambil nilai murni in-game siswa (300 XP / 520 XP) secara mutlak!
+  let finalScore = payload.scoreValue !== undefined ? payload.scoreValue : 0;
+  let finalAccuracy = payload.accuracy !== undefined ? payload.accuracy : 0;
   const maxPossibleScore = payload.maxScore > 0 ? payload.maxScore : 100;
   const content = game.gameJson as any;
 
   let totalQuestions = 0;
   let correctAnswers = 0;
-
   let aiGradingResult: any = null;
 
-  // De-duplicate answers by questionIndex/word/front to prevent duplicate score exploitation
+  // De-duplicate jawaban
   const uniqueAnswersMap = new Map();
   for (const ans of payload.answersDetail || []) {
     if (ans) {
@@ -474,194 +424,85 @@ export const finishGame = async (
     }
   }
   const deDuplicatedAnswers = Array.from(uniqueAnswersMap.values());
-  let updatedAnswersDetail: any[] = deDuplicatedAnswers;
+  let tempMappedAnswers: any[] = [];
 
-  // 1. Map `isCorrect` status for non-essay templates to prevent client spoofing
+  // Verifikasi status isCorrect secara aman di backend untuk non-essay
   if (game.templateType !== TemplateType.ESSAY) {
-    updatedAnswersDetail = deDuplicatedAnswers.map((ans: any) => {
+    tempMappedAnswers = deDuplicatedAnswers.map((ans: any) => {
       let isAnsCorrect = false;
       switch (game.templateType) {
         case TemplateType.MULTIPLE_CHOICE:
-          isAnsCorrect = MultipleChoiceService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = MultipleChoiceService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.TRUE_FALSE:
-          isAnsCorrect = TrueFalseService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = TrueFalseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.MATCHING:
-          isAnsCorrect = MatchingService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = MatchingService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.ANAGRAM:
-          isAnsCorrect = AnagramService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = AnagramService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.HANGMAN:
-          isAnsCorrect = HangmanService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = HangmanService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.WORD_SEARCH:
-          isAnsCorrect = WordSearchService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = WordSearchService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.FLASHCARD:
-          isAnsCorrect = FlashcardService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = FlashcardService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.MAZE_CHASE:
-          isAnsCorrect = MazeChaseService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = MazeChaseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
         case TemplateType.SPIN_THE_WHEEL:
-          isAnsCorrect = SpinTheWheelService.verifyAnswer(
-            content,
-            ans.questionIndex,
-            ans.selectedAnswer
-          );
+          isAnsCorrect = SpinTheWheelService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
           break;
       }
       return { ...ans, isCorrect: isAnsCorrect };
     });
 
-    correctAnswers = updatedAnswersDetail.filter((ans: any) => ans.isCorrect).length;
+    correctAnswers = tempMappedAnswers.filter((ans: any) => ans.isCorrect).length;
   }
 
-  // 2. Recalculate score and accuracy securely on backend
-  if (game.templateType === TemplateType.MULTIPLE_CHOICE) {
+  // Cari tahu total soal sebenarnya berdasarkan tipe template game
+  if (game.templateType === TemplateType.MULTIPLE_CHOICE || game.templateType === TemplateType.TRUE_FALSE || game.templateType === TemplateType.MAZE_CHASE || game.templateType === TemplateType.SPIN_THE_WHEEL) {
     totalQuestions = content.questions?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = MultipleChoiceService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
-      content
-    );
-  } else if (game.templateType === TemplateType.TRUE_FALSE) {
-    totalQuestions = content.questions?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = TrueFalseService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
-      content
-    );
   } else if (game.templateType === TemplateType.MATCHING) {
     totalQuestions = content.pairs?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = MatchingService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
-      content
-    );
-  } else if (game.templateType === TemplateType.ANAGRAM) {
+  } else if (game.templateType === TemplateType.ANAGRAM || game.templateType === TemplateType.HANGMAN || game.templateType === TemplateType.WORD_SEARCH) {
     totalQuestions = content.words?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = AnagramService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
-      content
-    );
-  } else if (game.templateType === TemplateType.HANGMAN) {
-    totalQuestions = content.words?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = HangmanService.calculateScore(
-      { ...payload, accuracy: finalAccuracy, answers: updatedAnswersDetail, answersDetail: updatedAnswersDetail },
-      content
-    );
-  } else if (game.templateType === TemplateType.WORD_SEARCH) {
-    totalQuestions = content.words?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = WordSearchService.calculateScore({
-      ...payload,
-      accuracy: finalAccuracy,
-      answers: updatedAnswersDetail,
-      answersDetail: updatedAnswersDetail,
-    });
   } else if (game.templateType === TemplateType.FLASHCARD) {
     totalQuestions = content.cards?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = FlashcardService.calculateScore({
-      ...payload,
-      accuracy: finalAccuracy,
-      answers: updatedAnswersDetail,
-      answersDetail: updatedAnswersDetail,
-    });
-  } else if (game.templateType === TemplateType.MAZE_CHASE) {
+  } else {
     totalQuestions = content.questions?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = MazeChaseService.calculateScore({
-      ...payload,
-      accuracy: finalAccuracy,
-      answers: updatedAnswersDetail,
-      answersDetail: updatedAnswersDetail,
-    });
-  } else if (game.templateType === TemplateType.SPIN_THE_WHEEL) {
-    totalQuestions = content.questions?.length || 0;
-    finalAccuracy =
-      totalQuestions > 0
-        ? Math.round((correctAnswers / totalQuestions) * 100)
-        : 0;
-    finalScore = SpinTheWheelService.calculateScore({
-      ...payload,
-      accuracy: finalAccuracy,
-      answers: updatedAnswersDetail,
-      answersDetail: updatedAnswersDetail,
-    });
-  } else if (game.templateType === TemplateType.ESSAY) {
-    totalQuestions = content.questions?.length || 0;
+  }
+
+  // 🛠️ CALCULATION OVERRIDE: Hitung pembagian poin per soal secara dinamis di riwayat siswa
+  let updatedAnswersDetail: any[] = [];
+  if (game.templateType !== TemplateType.ESSAY) {
+    const pointsPerCorrectAnswer = correctAnswers > 0 ? Math.round(finalScore / correctAnswers) : 0;
+
+    updatedAnswersDetail = tempMappedAnswers.map((ans: any) => ({
+      ...ans,
+      pointsEarned: ans.isCorrect ? pointsPerCorrectAnswer : 0,
+      score: ans.isCorrect ? pointsPerCorrectAnswer : 0,
+      points: ans.isCorrect ? pointsPerCorrectAnswer : 0
+    }));
+  } else {
+    updatedAnswersDetail = deDuplicatedAnswers;
+  }
+
+  // Jika kuis bertipe ESSAY, jalankan AI grading engine seperti biasa
+  if (game.templateType === TemplateType.ESSAY) {
     const gradingResults = [];
     updatedAnswersDetail = [];
     let totalAiScore = 0;
 
     for (const ans of payload.answersDetail) {
       const questionObj = content.questions[ans.questionIndex];
-
       if (questionObj) {
         const studentAnswer = ans.selectedAnswer?.trim() || "";
-
         if (!studentAnswer) {
           updatedAnswersDetail.push({
             questionIndex: ans.questionIndex,
@@ -674,167 +515,120 @@ export const finishGame = async (
             keywordsMatched: [],
             keywordsMissing: questionObj.keywords || [],
           });
-          gradingResults.push({
-            questionIndex: ans.questionIndex,
-            question: questionObj.question,
-            answer: "",
-            score: 0,
-            justification: "Soal tidak dijawab.",
-            correctAnswer: "",
-          });
+          gradingResults.push({ questionIndex: ans.questionIndex, question: questionObj.question, answer: "", score: 0, justification: "Soal tidak dijawab.", correctAnswer: "" });
           continue;
         }
 
         let result;
         if (content.gradingMode === "KEYWORD") {
-          console.log("[Smart Grading] Bypassing AI: Menggunakan mode penilaian KEYWORD gratis...");
           const cleanAnswer = studentAnswer.toLowerCase().trim();
-          const IGNORANCE_PATTERNS = /(tidak tahu|belum paham|tidak mengerti|no idea|don't know|kurang tahu|tidak paham|tidak tahu apa)/i;
-
-          const matched = (questionObj.keywords || []).filter((kw: string) => {
-            const cleanKw = kw.toLowerCase().trim();
-            return cleanAnswer.includes(cleanKw);
-          });
+          const IGNORANCE_PATTERNS = /(tidak tahu|belum paham|tidak mengerti|no idea|don't know|kurang tahu|tidak paham)/i;
+          const matched = (questionObj.keywords || []).filter((kw: string) => cleanAnswer.includes(kw.toLowerCase().trim()));
           const missing = (questionObj.keywords || []).filter((kw: string) => !matched.includes(kw));
-
           const matchedCount = matched.length;
           const totalKeywords = (questionObj.keywords || []).length;
-          let score = totalKeywords > 0
-            ? Math.round((matchedCount / totalKeywords) * 100)
-            : 50;
-
-          let justification = `[Mode Gratis] Evaluasi selesai menggunakan pencocokan kata kunci (${matchedCount}/${totalKeywords} kata kunci terdeteksi).`;
-
-          if (IGNORANCE_PATTERNS.test(cleanAnswer)) {
-            score = 0;
-            justification = `[Mode Gratis] Jawaban terdeteksi mengekspresikan ketidaktahuan/penolakan (skor langsung 0).`;
-          }
-
-          result = {
-            score,
-            justification,
-            correctAnswer: questionObj.answer || "Tinjau kembali materi untuk jawaban ideal selengkapnya.",
-            keywordsMatched: matched,
-            keywordsMissing: missing,
-          };
+          let score = totalKeywords > 0 ? Math.round((matchedCount / totalKeywords) * 100) : 50;
+          let justification = `[Mode Gratis] Evaluasi kata kunci (${matchedCount}/${totalKeywords} kata kunci terdeteksi).`;
+          if (IGNORANCE_PATTERNS.test(cleanAnswer)) { score = 0; justification = `Jawaban terdeteksi mengekspresikan ketidaktahuan.`; }
+          result = { score, justification, correctAnswer: questionObj.answer || "Tinjau kembali materi.", keywordsMatched: matched, keywordsMissing: missing };
         } else {
-          result = await SmartGradingService.gradeEssay(
-            questionObj.question,
-            questionObj.keywords,
-            studentAnswer
-          );
+          result = await SmartGradingService.gradeEssay(questionObj.question, questionObj.keywords, studentAnswer);
         }
 
-        gradingResults.push({
-          questionIndex: ans.questionIndex,
-          question: questionObj.question,
-          answer: studentAnswer,
-          score: result.score,
-          justification: result.justification,
-          correctAnswer: result.correctAnswer,
-        });
-
-        updatedAnswersDetail.push({
-          questionIndex: ans.questionIndex,
-          question: questionObj.question,
-          selectedAnswer: studentAnswer,
-          isCorrect: result.score >= 60,
-          pointsEarned: result.score,
-          justification: result.justification,
-          correctAnswer: result.correctAnswer,
-          keywordsMatched: result.keywordsMatched,
-          keywordsMissing: result.keywordsMissing,
-        });
-
+        gradingResults.push({ questionIndex: ans.questionIndex, question: questionObj.question, answer: studentAnswer, score: result.score, justification: result.justification, correctAnswer: result.correctAnswer });
+        updatedAnswersDetail.push({ questionIndex: ans.questionIndex, question: questionObj.question, selectedAnswer: studentAnswer, isCorrect: result.score >= 60, pointsEarned: result.score, justification: result.justification, correctAnswer: result.correctAnswer, keywordsMatched: result.keywordsMatched, keywordsMissing: result.keywordsMissing });
         totalAiScore += result.score;
       }
     }
     payload.answersDetail = updatedAnswersDetail;
     finalScore = Math.round(totalAiScore);
-    finalAccuracy =
-      totalQuestions > 0 ? Math.round(totalAiScore / totalQuestions) : 0;
+    finalAccuracy = totalQuestions > 0 ? Math.round(totalAiScore / totalQuestions) : 0;
     aiGradingResult = gradingResults;
   }
 
-  // Helper to sync user profile XP & Badges
+  if (game.templateType !== TemplateType.ESSAY) {
+    if (payload.accuracy !== undefined) {
+      finalAccuracy = payload.accuracy;
+    }
+  }
+
+  // 🛠️ UPDATE REAL-TIME REDIS LEADERBOARD: Paksa timpa sisa poin kecepatan di Redis dengan nilai in-game murni siswa + sertakan metadata detail
+  try {
+    const redisKey = `leaderboard:${gameId}`;
+    const activeSession = await prisma.gameSession.findFirst({
+      where: { id: session?.id },
+      select: { playerName: true }
+    });
+    const identity = activeSession?.playerName || userId;
+    
+    await redis.zadd(redisKey, finalScore, identity);
+
+    const rawTopScores = await redis.zrevrange(redisKey, 0, 9, "WITHSCORES");
+    const formattedScores: any[] = [];
+    
+    for (let i = 0; i < rawTopScores.length; i += 2) {
+      const name = rawTopScores[i];
+      const scoreStr = rawTopScores[i + 1];
+      if (name !== undefined && scoreStr !== undefined) {
+        if (name === identity) {
+          formattedScores.push({
+            name,
+            score: parseInt(scoreStr, 10),
+            accuracy: finalAccuracy,
+            progress: `${correctAnswers}/${totalQuestions}`
+          });
+        } else {
+          formattedScores.push({
+            name,
+            score: parseInt(scoreStr, 10),
+            accuracy: finalAccuracy, 
+            progress: `${totalQuestions}/${totalQuestions}`
+          });
+        }
+      }
+    }
+    
+    const io = getIO();
+    if (game.shareCode) {
+      io.to(game.shareCode).emit("ranking_update", formattedScores);
+    }
+  } catch (redisErr) {
+    console.error("⚠️ Gagal menimpa ulang papan peringkat Redis:", redisErr);
+  }
+
+  // Fungsi pembantu sinkronisasi profil user
   const syncUserProfile = async (uId: string) => {
     try {
       const { getStudentAnalytics } = require("../analytics/analytics.service");
       const updatedAnalytics = await getStudentAnalytics(uId);
-      const unlockedBadges = (updatedAnalytics.badges || []).filter(
-        (b: any) => b.isUnlocked
-      );
+      const unlockedBadges = (updatedAnalytics.badges || []).filter((b: any) => b.isUnlocked);
 
       await prisma.userProfile.upsert({
         where: { userId: uId },
-        update: {
-          totalPoints: Math.round(updatedAnalytics.overview.totalXp),
-          badges: unlockedBadges as Prisma.InputJsonValue,
-        },
-        create: {
-          userId: uId,
-          bio: "Halo, saya pengguna baru WordIT!",
-          totalPoints: Math.round(updatedAnalytics.overview.totalXp),
-          badges: unlockedBadges as Prisma.InputJsonValue,
-        },
+        update: { totalPoints: Math.round(updatedAnalytics.overview.totalXp), badges: unlockedBadges as Prisma.InputJsonValue },
+        create: { userId: uId, bio: "Halo, saya pengguna baru WordIT!", totalPoints: Math.round(updatedAnalytics.overview.totalXp), badges: unlockedBadges as Prisma.InputJsonValue },
       });
-      console.log(
-        `✅ UserProfile synced for ${uId}: XP = ${updatedAnalytics.overview.totalXp}, Badges count = ${unlockedBadges.length}`
-      );
+      console.log(`✅ UserProfile synced for ${uId}`);
     } catch (profileError) {
       console.error("❌ Gagal memperbarui UserProfile:", profileError);
     }
   };
 
-  // Jika tidak ada sesi aktif, buat satu baru dan langsung selesaikan
   if (!session) {
-    console.warn(
-      `⚠️ No active session found for user ${userId} game ${gameId}. Creating one.`,
-    );
+    console.warn(`⚠️ No active session found for user ${userId} game ${gameId}. Creating fallback session.`);
     const newSession = await prisma.gameSession.create({
-      data: {
-        gameId,
-        userId,
-        isCompleted: true,
-        finishedAt: new Date(),
-      },
+      data: { gameId, userId, isCompleted: true, finishedAt: new Date() },
     });
 
-    console.log("NEW SESSION CREATED:", newSession);
-
-    const result = await prisma.result.create({
-      data: {
-        sessionId: newSession.id,
-        scoreValue: Math.round(finalScore),
-        maxScore: maxPossibleScore,
-        accuracy: finalAccuracy,
-        timeSpent: payload.timeSpent,
-        difficultyPlayed: game.difficulty,
-        answersDetail: updatedAnswersDetail as Prisma.InputJsonValue,
-        aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
-      },
+    const result = await prisma.result.upsert({
+      where: { sessionId: newSession.id },
+      update: { scoreValue: Math.round(finalScore), maxScore: maxPossibleScore, accuracy: finalAccuracy, timeSpent: payload.timeSpent, answersDetail: updatedAnswersDetail as Prisma.InputJsonValue, aiGradingResult: aiGradingResult as Prisma.InputJsonValue },
+      create: { sessionId: newSession.id, scoreValue: Math.round(finalScore), maxScore: maxPossibleScore, accuracy: finalAccuracy, timeSpent: payload.timeSpent, difficultyPlayed: game.difficulty, answersDetail: updatedAnswersDetail as Prisma.InputJsonValue, aiGradingResult: aiGradingResult as Prisma.InputJsonValue },
     });
 
     await syncUserProfile(userId);
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    await createSystemLog({
-      action: "FINISH_GAME",
-      details: `Student finished game "${game.title}" with score ${Math.round(finalScore)}/${maxPossibleScore} (${finalAccuracy}% accuracy)`,
-      userId,
-      userName: user?.name || "Unknown",
-    });
-
-    return { session: newSession, result };
-  }
-
-  // Cek idempoten
-  const existingResult = await prisma.result.findUnique({
-    where: { sessionId: session.id },
-  });
-
-  if (existingResult) {
-    return { session, result: existingResult };
+    // 🛠️ KUNCI SINKRONISASI OBJEK KEMBALIAN SISI FALLBACK
+    return { session: newSession, result: { ...result, answersDetail: updatedAnswersDetail } };
   }
 
   const closedSession = await prisma.gameSession.update({
@@ -842,8 +636,17 @@ export const finishGame = async (
     data: { isCompleted: true, finishedAt: new Date() },
   });
 
-  const result = await prisma.result.create({
-    data: {
+  const result = await prisma.result.upsert({
+    where: { sessionId: session.id },
+    update: {
+      scoreValue: Math.round(finalScore),
+      maxScore: maxPossibleScore,
+      accuracy: finalAccuracy,
+      timeSpent: payload.timeSpent,
+      answersDetail: updatedAnswersDetail as Prisma.InputJsonValue,
+      aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
+    },
+    create: {
       sessionId: session.id,
       scoreValue: Math.round(finalScore),
       maxScore: maxPossibleScore,
@@ -855,39 +658,19 @@ export const finishGame = async (
     },
   });
 
-  console.log(
-    `✅ Game finished: User ${userId}, Validated Score ${Math.round(finalScore)}, Accuracy ${finalAccuracy}%`,
-  );
-
+  console.log(`✅ Game finished securely: User ${userId}, Validated Score ${Math.round(finalScore)}`);
   await syncUserProfile(userId);
 
-  // =========================================================================
-  // 🎓 MOODLE LTI GRADE PASSBACK INTERCEPTOR
-  // =========================================================================
   if (payload.ltik) {
-    console.log(`🎓 [LTI] LTI Token terdeteksi! Mempersiapkan sinkronisasi nilai ke Moodle...`);
     try {
-      await ltiProvider.Grade.scorePublish(payload.ltik, {
-        scoreGiven: Math.round(finalScore),
-        scoreMaximum: maxPossibleScore,
-        activityProgress: 'Completed',
-        gradingProgress: 'FullyGraded'
-      });
-      console.log(`✅ [LTI] Berhasil mengirim nilai ${Math.round(finalScore)} ke Moodle Gradebook!`);
+      await ltiProvider.Grade.scorePublish(payload.ltik, { scoreGiven: Math.round(finalScore), scoreMaximum: maxPossibleScore, activityProgress: 'Completed', gradingProgress: 'FullyGraded' });
     } catch (e) {
       console.error(`❌ [LTI] Gagal mengirim nilai ke Moodle:`, e);
     }
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  await createSystemLog({
-    action: "FINISH_GAME",
-    details: `Student finished game "${game.title}" with score ${Math.round(finalScore)}/${maxPossibleScore} (${finalAccuracy}% accuracy)`,
-    userId,
-    userName: user?.name || "Unknown",
-  });
-
-  return { session: closedSession, result };
+  // 🛠️ KUNCI SINKRONISASI UTAMA: Kembalikan objek array answersDetail ter-override agar ditangkap Axios frontend
+  return { session: closedSession, result: { ...result, answersDetail: updatedAnswersDetail } };
 };
 
 // ═══════════════ TEMPLATE MAPPING ═══════════════
@@ -952,11 +735,9 @@ const getTemplateDescription = (type: TemplateType): string => {
     MAZE_CHASE: "Jawab soal sambil berpetualang di labirin",
     SPIN_THE_WHEEL: "Putar roda untuk mendapatkan pertanyaan acak",
     WORD_SEARCH: "Temukan kata-kata tersembunyi di dalam kotak huruf",
-    // Penjelasan untuk Standard Assessment
     MULTIPLE_CHOICE: "Kuis pilihan ganda klasik dengan 4 opsi jawaban",
     TRUE_FALSE: "Tentukan pernyataan benar atau salah dengan cepat",
-    MATCHING:
-      "Pasangkan pernyataan di kolom kiri dengan jawaban di kolom kanan",
+    MATCHING: "Pasangkan pernyataan di kolom kiri dengan jawaban di kolom kanan",
     ESSAY: "Jawab pertanyaan secara terbuka dengan penilaian otomatis dari AI",
   };
   return descriptions[type] ?? "";

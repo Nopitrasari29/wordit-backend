@@ -143,13 +143,19 @@ model Game {
 model GameSession {
   id          String    @id @default(uuid())
   gameId      String
-  userId      String
+  
+  // 1. Ubah userId menjadi optional (?) agar mendukung mode public/tanpa login
+  userId      String?
+  
+  // 2. TAMBAHKAN FIELD INI: Menyimpan nickname/nama yang diinput saat join room kuis
+  playerName  String    @default("Guest")
+  
   startedAt   DateTime  @default(now())
   finishedAt  DateTime?
   isCompleted Boolean   @default(false)
 
   game   Game    @relation(fields: [gameId], references: [id])
-  user   User    @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id]) // Menjadi optional relation
   result Result?
 
   @@index([userId, gameId])

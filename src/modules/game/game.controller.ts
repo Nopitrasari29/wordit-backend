@@ -3,6 +3,7 @@ import { EducationLevel } from "@prisma/client";
 import { createGameSchema, updateGameSchema, gameQuerySchema, submitAnswerSchema } from "./game.schema";
 
 import * as gameService from "./game.service";
+import { prisma } from "../../config/database";
 import { successResponse, errorResponse } from "../../utils/response";
 import { type AuthenticatedRequest } from "../../middleware/auth.middleware";
 
@@ -187,9 +188,15 @@ export const playGame = async (req: Request, res: Response, next: NextFunction) 
     }
 
     const id = req.params.id as string;
-    console.log(`ðŸŽ® User ${userId} starting game session for: ${id}`);
     
-    const session = await gameService.startGame(id, userId as string);
+    // 🛠️ PERBAIKAN: Ambil string nama kuis room yang diketik siswa dari body request
+    const { playerName } = req.body; 
+
+    console.log(`🕹️ User ${userId} (${playerName || "Guest"}) starting game session for: ${id}`);
+    
+    // 🛠️ PERBAIKAN: Teruskan playerName sebagai parameter ketiga ke gameService
+    const session = await gameService.startGame(id, userId as string, playerName);
+    
     res.status(200).json(successResponse(session, "Sesi game dimulai"));
   } catch (error) {
     next(error);
@@ -213,14 +220,20 @@ export const submitAnswer = async (req: Request, res: Response, next: NextFuncti
 
     const { questionIndex, selectedAnswer, earnedPoints } = parsed.data;
     
-    console.log(`[SUBMIT_ANSWER] Validated body:`, parsed.data);
+    // 🛠️ FIX REVISI 1: Ambil playerName asli siswa dari database session aktif
+    const activeSession = await prisma.gameSession.findFirst({
+      where: { gameId: id, userId: userId as string, isCompleted: false },
+      select: { playerName: true }
+    });
     
+    const currentStudentName = activeSession?.playerName || "Guest Player";
+
     const result = await gameService.submitAnswer(
       id, 
       userId as string, 
       questionIndex as number, 
       selectedAnswer,
-      undefined,
+      currentStudentName, // 🛠️ KIRIM NAMA ASLI SISWA (bukan undefined lagi)
       earnedPoints
     );
 
