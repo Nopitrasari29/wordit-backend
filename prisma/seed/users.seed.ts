@@ -51,6 +51,8 @@ export const seedUsers = async () => {
         role: user.role,
         approvalStatus: user.approvalStatus,
         educationLevels: user.educationLevels,
+        // 🛠️ FIX: Gunakan field 'isVerified' sesuai dengan database schema kamu
+        isVerified: true, 
       },
       create: {
         name: user.name,
@@ -59,6 +61,8 @@ export const seedUsers = async () => {
         role: user.role,
         approvalStatus: user.approvalStatus,
         educationLevels: user.educationLevels,
+        // 🛠️ FIX: Gunakan field 'isVerified' sesuai dengan database schema kamu
+        isVerified: true,
         profile: {
           create: {
             bio: "Halo, saya pengguna WordIT!",
@@ -69,7 +73,7 @@ export const seedUsers = async () => {
       },
     });
     createdUsers.push(created);
-    console.log(`  OK ${created.role} [${created.approvalStatus}]: ${created.name}`);
+    console.log(`   OK ${created.role} [${created.approvalStatus}]: ${created.name}`);
   }
 
   return createdUsers;

@@ -55,24 +55,53 @@ export const getAllUsers = async (query: any) => {
 };
 
 // ============================================================
-// 2. APPROVE / REJECT TEACHER (Admin Only)
+// 2. APPROVE / REJECT TEACHER (Admin Only) - TYPE SAFE FIXED
 // ============================================================
 export const approveTeacher = async (
   targetUserId: string,
   action: "APPROVE" | "REJECT",
   adminUserId?: string
 ) => {
-  const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+  const user = await prisma.user.findUnique({ 
+    where: { id: targetUserId },
+    include: { profile: true }
+  });
+
   if (!user) throw new Error("User tidak ditemukan");
   if (user.role !== Role.TEACHER)
     throw new Error("Hanya akun Teacher yang bisa di-approve/reject");
 
-  const newStatus =
-    action === "APPROVE" ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
+  const newStatus = action === "APPROVE" ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
+
+  let finalEducationLevels = user.educationLevels;
+  let cleanBio = user.profile?.bio || "";
+
+  // 🛠️ FIX TYPE SAFE: Tambahkan pengecekan eksistensi user.profile yang ketat
+  if (action === "APPROVE" && user.profile && user.profile.bio && user.profile.bio.includes("||PENDING_REQ_LEVELS||")) {
+    try {
+      const parts = user.profile.bio.split("||PENDING_REQ_LEVELS||");
+      cleanBio = parts[0] ? parts[0].trim() : ""; 
+      if (parts[1]) {
+        finalEducationLevels = JSON.parse(parts[1]);
+      }
+    } catch (e) {
+      console.error("⚠️ Gagal mengekstrak JSON data jenjang tertunda:", e);
+    }
+  } else if (action === "REJECT" && user.profile && user.profile.bio && user.profile.bio.includes("||PENDING_REQ_LEVELS||")) {
+    cleanBio = user.profile.bio.split("||PENDING_REQ_LEVELS||")[0]?.trim() || "";
+  }
 
   const updated = await prisma.user.update({
     where: { id: targetUserId },
-    data: { approvalStatus: newStatus },
+    data: { 
+      approvalStatus: newStatus,
+      educationLevels: finalEducationLevels,
+      profile: {
+        update: {
+          bio: cleanBio
+        }
+      }
+    },
     select: {
       id: true,
       name: true,
@@ -86,12 +115,11 @@ export const approveTeacher = async (
   const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
   await createSystemLog({
     action: action === "APPROVE" ? "APPROVE_TEACHER" : "REJECT_TEACHER",
-    details: `Teacher "${updated.name}" is ${action === "APPROVE" ? "approved" : "rejected"} by Admin ${admin?.name || "Admin"} via Website`,
+    details: `Teacher "${updated.name}" is ${action === "APPROVE" ? "approved" : "rejected"} by Admin ${admin?.name || "Admin"}`,
     userId: adminUserId,
     userName: admin?.name || "Admin",
   });
 
-  // Sinkronisasikan status persetujuan ke Telegram
   try {
     const { updateTelegramMessageStatus } = await import("../../utils/telegram.service");
     await updateTelegramMessageStatus(targetUserId, action, updated.name);
@@ -167,14 +195,19 @@ export const getProfile = async (userId: string) => {
 };
 
 // ============================================================
-// 5. UPDATE PROFILE
+// 5. UPDATE PROFILE (Self User) - CLEAN & FIXED TYPE SAFE
 // ============================================================
 export const updateProfile = async (
   userId: string,
-  data: UpdateUserInput,
+  data: any, 
   photoFile?: Express.Multer.File
 ) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  // Ambil data user lengkap beserta profilnya
+  const user = await prisma.user.findUnique({ 
+    where: { id: userId },
+    include: { profile: true } 
+  });
+  
   if (!user) throw new Error("User not found");
 
   if (data.email && data.email !== user.email) {
@@ -196,16 +229,28 @@ export const updateProfile = async (
     updatedPicturePath = newPath;
   }
 
-  if (data.bio !== undefined) {
-    await prisma.userProfile.upsert({
-      where: { userId },
-      update: { bio: data.bio },
-      create: { userId, bio: data.bio },
-    });
+  // Membaca request langsung dari parameter data terowongan controller
+  let textBioToSave = data.bio !== undefined ? data.bio : user.profile?.bio || "";
+  
+  // Jika ada titipan data dari pemisah string sebelumnya, bersihkan dulu agar tidak bertumpuk berulang-ulang
+  if (textBioToSave.includes("||PENDING_REQ_LEVELS||")) {
+    textBioToSave = textBioToSave.split("||PENDING_REQ_LEVELS||")[0].trim();
   }
-console.log("DATA EDUCATION LEVELS TO SAVE:", data.educationLevels);
-console.log("USER ROLE:", user.role);
 
+  if (user.role === "TEACHER" && data.educationLevels !== undefined && data.approvalStatus === "PENDING") {
+    // Rekatkan array baru di belakang deskripsi bio murni
+    textBioToSave = `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
+    console.log("💾 Menyimpan Metadata Ajuan Baru ke Kolom Bio DB:", textBioToSave);
+  }
+
+  // Simpan/perbarui tabel profile
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: { bio: textBioToSave },
+    create: { userId, bio: textBioToSave },
+  });
+
+  // 🛠️ CODES REALIGNMENT: Kembalikan query update user milik profile murni (menggunakan userId)
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
@@ -213,9 +258,12 @@ console.log("USER ROLE:", user.role);
       email: data.email ?? user.email,
       ...(hashedPassword && { password: hashedPassword }),
       photoUrl: updatedPicturePath,
-      ...(user.role === "TEACHER" && data.educationLevels !== undefined && {
-  educationLevels: data.educationLevels,
-}),
+      approvalStatus: data.approvalStatus ?? user.approvalStatus, // Ubah akun ke status PENDING secara resmi jika dipicu
+      
+      // KUNCI UTAMA WORKFLOW: Jangan pernah ubah kolom utama jika status pengajuannya adalah PENDING!
+      ...(data.approvalStatus !== "PENDING" && data.educationLevels !== undefined && {
+        educationLevels: data.educationLevels,
+      }),
     },
     select: {
       id: true,
@@ -232,7 +280,7 @@ console.log("USER ROLE:", user.role);
 
   await createSystemLog({
     action: "UPDATE_PROFILE",
-    details: `User "${updated.name}" updated their profile`,
+    details: `User "${updated.name}" updated their profile (Approval Status: ${updated.approvalStatus})`,
     userId: userId,
     userName: updated.name,
   });

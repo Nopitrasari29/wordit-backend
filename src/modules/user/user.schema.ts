@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { EducationLevel } from "@prisma/client"
 
 export const updateUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").optional(),
@@ -6,6 +7,21 @@ export const updateUserSchema = z.object({
   currentPassword: z.string().optional(),
   newPassword: z.string().min(8, "Password must be at least 8 characters").optional(),
   bio: z.string().max(250, "Bio cannot exceed 250 characters").optional(),
+  
+  // 🛠️ FIX UTAMA: Daftarkan properti educationLevels agar lolos dari pembuangan Zod safeParse
+  educationLevels: z
+    .preprocess((val) => {
+      // Jika data masuk sebagai string teks (imbas FormData dari frontend), parse kembali menjadi array asli
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return val;
+        }
+      }
+      return val;
+    }, z.array(z.nativeEnum(EducationLevel)))
+    .optional(),
 }).refine((data) => {
   // Kalau isi newPassword, wajib isi currentPassword juga
   if (data.newPassword && !data.currentPassword) {
