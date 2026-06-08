@@ -556,7 +556,7 @@ export const getAdminStats = async () => {
   }
 };
 
-export const getAdminLogs = async (params: { page?: number; limit?: number; action?: string; search?: string; timeRange?: string; }) => {
+export const getAdminLogs = async (params: { page?: number; limit?: number; action?: string; search?: string; timeRange?: string; dateFrom?: string; dateTo?: string; }) => {
   const page = Number(params.page) || 1;
   const limit = Number(params.limit) || 10;
   const skip = (page - 1) * limit;
@@ -571,6 +571,11 @@ export const getAdminLogs = async (params: { page?: number; limit?: number; acti
     else if (params.timeRange === "month") startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     else if (params.timeRange === "2months") startDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
     if (startDate) where.createdAt = { gte: startDate };
+  } else if (params.dateFrom || params.dateTo) {
+    const filter: { gte?: Date; lte?: Date } = {};
+    if (params.dateFrom) filter.gte = new Date(params.dateFrom);
+    if (params.dateTo) filter.lte = new Date(params.dateTo);
+    where.createdAt = filter;
   }
   if (params.search) {
     where.OR = [
