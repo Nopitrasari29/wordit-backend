@@ -753,11 +753,67 @@ export const saveLeaderboard = async (
     });
     if (!game) return;
 
+    // 1. Tutup semua sesi aktif untuk kuis ini
     await prisma.gameSession.updateMany({
       where: { gameId: game.id, isCompleted: false },
       data: { isCompleted: true, finishedAt: new Date() },
     });
-    console.log(`✅ Sesi game ${roomCode} berhasil ditutup.`);
+
+    // 2. Simpan skor pemain guest/simulator ke dalam database
+    for (const player of finalPlayers) {
+      if (!player.name) continue;
+
+      // Cek apakah data sesi untuk nama pemain ini sudah ada dan selesai
+      const existingSession = await prisma.gameSession.findFirst({
+        where: {
+          gameId: game.id,
+          playerName: player.name,
+          isCompleted: true,
+        },
+        include: { result: true },
+      });
+
+      if (!existingSession) {
+        // Buat sesi baru untuk guest/tester
+        const newSession = await prisma.gameSession.create({
+          data: {
+            gameId: game.id,
+            playerName: player.name,
+            isCompleted: true,
+            finishedAt: new Date(),
+          },
+        });
+
+        // Buat data hasil nilai untuk sesi tersebut
+        await prisma.result.create({
+          data: {
+            sessionId: newSession.id,
+            scoreValue: player.score || 0,
+            maxScore: 1000,
+            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
+            timeSpent: player.timeSpent || 60,
+            difficultyPlayed: game.difficulty,
+            answersDetail: [],
+          },
+        });
+        console.log(`💾 Persisted guest player session & score: ${player.name} (${player.score} pts)`);
+      } else if (!existingSession.result) {
+        // Jika sesi ada tapi belum ada hasil nilainya, buat datanya
+        await prisma.result.create({
+          data: {
+            sessionId: existingSession.id,
+            scoreValue: player.score || 0,
+            maxScore: 1000,
+            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
+            timeSpent: player.timeSpent || 60,
+            difficultyPlayed: game.difficulty,
+            answersDetail: [],
+          },
+        });
+      }
+    }
+
+    console.log(`✅ Sesi game ${roomCode} berhasil ditutup dan data leaderboard disimpan.`);
   } catch (error) {
     console.error("❌ Gagal menyimpan leaderboard:", error);
   }
