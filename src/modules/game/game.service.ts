@@ -265,7 +265,7 @@ export const startGame = async (gameId: string, userId: string, playerName?: str
   const recommendedDifficulty = await getAdaptiveDifficulty(userId);
 
   const existingSession = await prisma.gameSession.findFirst({
-    where: { gameId, userId },
+    where: { gameId, userId, isCompleted: false },
     orderBy: { startedAt: "desc" },
   });
 

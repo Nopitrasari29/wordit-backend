@@ -170,6 +170,7 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
       scoreValue: true,
       accuracy: true,
       answersDetail: true,
+      timeSpent: true,
     },
   });
 
@@ -244,6 +245,7 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
       gameName: game.title,
       score: r.scoreValue,
       accuracy: r.accuracy ?? 0,
+      timeSpent: r.timeSpent ?? 0,
     };
   });
 
@@ -377,6 +379,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
       gameName: r.session.game.title,
       score: r.scoreValue,
       accuracy: r.accuracy ?? 0,
+      timeSpent: r.timeSpent ?? 0,
     };
   });
 
