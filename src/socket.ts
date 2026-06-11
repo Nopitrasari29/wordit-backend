@@ -370,27 +370,8 @@ export const initSocket = (httpServer: HttpServer) => {
             if (player.id === socket.id) {
               player.isOnline = false;
               io.to(roomCode).emit("updatePlayerList", room.players);
-              console.log(`👋 ${playerName} disconnected, waiting 30s...`);
-
-              const timerKey = `${roomCode}_${playerName}`;
-              if (reconnectTimers[timerKey]) clearTimeout(reconnectTimers[timerKey]);
-
-              reconnectTimers[timerKey] = setTimeout(() => {
-                delete reconnectTimers[timerKey];
-                const currentRoom = rooms[roomCode];
-                if (currentRoom) {
-                  const idx = currentRoom.players.findIndex((p) => p.name === playerName);
-                  if (idx !== -1 && currentRoom.players[idx].isOnline === false) {
-                    currentRoom.players.splice(idx, 1);
-                    io.to(roomCode).emit("updatePlayerList", currentRoom.players);
-                    console.log(`💀 ${playerName} removed permanently after timeout.`);
-
-                    if (currentRoom.players.length === 0) {
-                      delete rooms[roomCode];
-                    }
-                  }
-                }
-              }, 30000);
+              // 🛠️ REVISI: Tetap simpan data pemain di memori agar nilai/nama yang lama join tidak hilang
+              console.log(`👋 ${playerName} disconnected, marked offline.`);
             }
           }
         }
