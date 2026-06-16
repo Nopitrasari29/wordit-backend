@@ -264,6 +264,17 @@ export const startGame = async (gameId: string, userId: string, playerName?: str
 
   const recommendedDifficulty = await getAdaptiveDifficulty(userId);
 
+  // Resolving playerName to the user's actual registered name if logged in
+  let resolvedPlayerName = playerName;
+  if (!resolvedPlayerName && userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    if (user) resolvedPlayerName = user.name;
+  }
+  if (!resolvedPlayerName) resolvedPlayerName = "Guest";
+
   const existingSession = await prisma.gameSession.findFirst({
     where: { gameId, userId, isCompleted: false },
     orderBy: { startedAt: "desc" },
@@ -275,7 +286,7 @@ export const startGame = async (gameId: string, userId: string, playerName?: str
     const updatedSession = await prisma.gameSession.update({
       where: { id: existingSession.id },
       data: { 
-        playerName: playerName || "Guest",
+        playerName: resolvedPlayerName,
         isCompleted: false 
       },
     });
@@ -286,7 +297,7 @@ export const startGame = async (gameId: string, userId: string, playerName?: str
     data: { 
       gameId, 
       userId,
-      playerName: playerName || "Guest"
+      playerName: resolvedPlayerName
     },
   });
 
@@ -616,8 +627,16 @@ export const finishGame = async (
 
   if (!session) {
     console.warn(`⚠️ No active session found for user ${userId} game ${gameId}. Creating fallback session.`);
+    let resolvedPlayerName = "Guest";
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+      if (user) resolvedPlayerName = user.name;
+    }
     const newSession = await prisma.gameSession.create({
-      data: { gameId, userId, isCompleted: true, finishedAt: new Date() },
+      data: { gameId, userId, playerName: resolvedPlayerName, isCompleted: true, finishedAt: new Date() },
     });
 
     const result = await prisma.result.upsert({
@@ -759,7 +778,7 @@ export const saveLeaderboard = async (
       data: { isCompleted: true, finishedAt: new Date() },
     });
 
-    // 2. Simpan skor pemain guest/simulator ke dalam database
+    // 2. Simpan skor pemain guest/simulator/siswa ke dalam database
     for (const player of finalPlayers) {
       if (!player.name) continue;
 
@@ -774,11 +793,12 @@ export const saveLeaderboard = async (
       });
 
       if (!existingSession) {
-        // Buat sesi baru untuk guest/tester
+        // Buat sesi baru untuk guest/tester/siswa
         const newSession = await prisma.gameSession.create({
           data: {
             gameId: game.id,
             playerName: player.name,
+            userId: player.userId || null,
             isCompleted: true,
             finishedAt: new Date(),
           },
@@ -796,20 +816,30 @@ export const saveLeaderboard = async (
             answersDetail: [],
           },
         });
-        console.log(`💾 Persisted guest player session & score: ${player.name} (${player.score} pts)`);
-      } else if (!existingSession.result) {
-        // Jika sesi ada tapi belum ada hasil nilainya, buat datanya
-        await prisma.result.create({
-          data: {
-            sessionId: existingSession.id,
-            scoreValue: player.score || 0,
-            maxScore: 1000,
-            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
-            timeSpent: player.timeSpent || 60,
-            difficultyPlayed: game.difficulty,
-            answersDetail: [],
-          },
-        });
+        console.log(`💾 Persisted player session & score: ${player.name} (${player.score} pts, userId: ${player.userId || "Guest"})`);
+      } else {
+        // Update userId jika sebelumnya belum terasosiasi tapi sekarang ada userId
+        if (!existingSession.userId && player.userId) {
+          await prisma.gameSession.update({
+            where: { id: existingSession.id },
+            data: { userId: player.userId }
+          });
+        }
+
+        if (!existingSession.result) {
+          // Jika sesi ada tapi belum ada hasil nilainya, buat datanya
+          await prisma.result.create({
+            data: {
+              sessionId: existingSession.id,
+              scoreValue: player.score || 0,
+              maxScore: 1000,
+              accuracy: player.accuracy !== undefined ? player.accuracy : 100,
+              timeSpent: player.timeSpent || 60,
+              difficultyPlayed: game.difficulty,
+              answersDetail: [],
+            },
+          });
+        }
       }
     }
 

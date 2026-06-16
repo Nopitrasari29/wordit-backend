@@ -9,6 +9,7 @@ let io: Server;
 interface PendingStudent {
   id: string;
   name: string;
+  userId?: string | null;
 }
 
 interface RoomState {
@@ -126,7 +127,7 @@ export const initSocket = (httpServer: HttpServer) => {
     });
 
     // 2. 👤 JOIN LOBBY: Siswa masuk ke ruangan kuis
-    socket.on("joinLobby", ({ code, playerName }: { code: string; playerName: string }) => {
+    socket.on("joinLobby", ({ code, playerName, userId }: { code: string; playerName: string; userId?: string | null }) => {
       const roomCode = code?.toUpperCase().trim();
 
       console.log("=================================");
@@ -134,6 +135,7 @@ export const initSocket = (httpServer: HttpServer) => {
       console.log("ROOM:", roomCode);
       console.log("PLAYER:", playerName);
       console.log("SOCKET:", socket.id);
+      console.log("USERID:", userId);
       console.log("=================================");
 
       if (!roomCode || !playerName) return;
@@ -171,10 +173,12 @@ export const initSocket = (httpServer: HttpServer) => {
           name: playerName,
           score: 0,
           isOnline: true,
+          userId: userId || null,
         });
       } else {
         isExist.id = socket.id;
         isExist.isOnline = true;
+        if (userId) isExist.userId = userId;
         const timerKey = `${roomCode}_${playerName}`;
         if (reconnectTimers[timerKey]) {
           clearTimeout(reconnectTimers[timerKey]);
@@ -197,8 +201,8 @@ export const initSocket = (httpServer: HttpServer) => {
         if (room.allowLateJoin) {
           socket.emit("gameStarted", roomCode);
         } else {
-          room.pendingStudents.push({ id: socket.id, name: playerName });
-          io.to(room.hostSocketId!).emit("pendingStudent", { id: socket.id, name: playerName });
+          room.pendingStudents.push({ id: socket.id, name: playerName, userId: userId || null });
+          io.to(room.hostSocketId!).emit("pendingStudent", { id: socket.id, name: playerName, userId: userId || null });
           socket.emit("waitingApproval");
         }
       }
@@ -212,7 +216,7 @@ export const initSocket = (httpServer: HttpServer) => {
       const student = room.pendingStudents?.find((s) => s.id === studentId);
       if (!student) return;
 
-      room.players.push({ id: student.id, name: student.name, score: 0, isOnline: true });
+      room.players.push({ id: student.id, name: student.name, score: 0, isOnline: true, userId: student.userId || null });
       room.pendingStudents = room.pendingStudents.filter((s) => s.id !== studentId);
 
       io.to(room.hostSocketId!).emit("pendingStudents", room.pendingStudents);
@@ -234,12 +238,14 @@ export const initSocket = (httpServer: HttpServer) => {
     socket.on("joinGame", (data: any) => {
       let roomCode = "";
       let playerName = "";
+      let userId = "";
 
       if (typeof data === "string") {
         roomCode = data.toUpperCase().trim();
       } else if (data && typeof data === "object") {
         roomCode = data.code?.toUpperCase().trim();
         playerName = data.playerName;
+        userId = data.userId;
       }
 
       if (!roomCode) return;
@@ -263,6 +269,7 @@ export const initSocket = (httpServer: HttpServer) => {
           if (existingPlayer) {
             existingPlayer.id = socket.id;
             existingPlayer.isOnline = true;
+            if (userId) existingPlayer.userId = userId;
             console.log(`🔄 Re-associated Player [${playerName}] to new socket [${socket.id}]`);
             const timerKey = `${roomCode}_${playerName}`;
             if (reconnectTimers[timerKey]) {
@@ -270,7 +277,7 @@ export const initSocket = (httpServer: HttpServer) => {
               delete reconnectTimers[timerKey];
             }
           } else {
-            room.players.push({ id: socket.id, name: playerName, score: 0, isOnline: true });
+            room.players.push({ id: socket.id, name: playerName, score: 0, isOnline: true, userId: userId || null });
             console.log(`👤 Player [${playerName}] added during joinGame`);
           }
           io.to(roomCode).emit("updatePlayerList", room.players);
