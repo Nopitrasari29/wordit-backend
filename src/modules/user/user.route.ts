@@ -25,6 +25,9 @@ router.get("/leaderboard", authMiddleware(), userController.getStudentLeaderboar
 // GET semua user (dengan filter role, approvalStatus, search, pagination)
 router.get("/", authMiddleware(["ADMIN"]), userController.getAllUsers);
 
+// Bulk import users
+router.post("/bulk-import", authMiddleware(["ADMIN"]), userController.bulkImportUsers);
+
 // Approve / Reject Teacher
 // PATCH /api/users/:id/approve  body: { action: "APPROVE" | "REJECT" }
 router.patch("/:id/approve", authMiddleware(["ADMIN"]), userController.approveTeacher);

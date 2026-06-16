@@ -433,3 +433,95 @@ export const getStudentLeaderboard = async () => {
     take: 10,
   });
 };
+
+// ============================================================
+// 9. ADMIN ONLY: BULK IMPORT USERS
+// ============================================================
+export const bulkImportUsers = async (
+  usersData: Array<{
+    name: string;
+    email: string;
+    passwordRaw: string;
+    role: Role;
+    educationLevels?: EducationLevel[];
+  }>,
+  adminUserId?: string
+) => {
+  const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
+
+  const results = {
+    total: usersData.length,
+    success: 0,
+    failed: 0,
+    errors: [] as string[],
+  };
+
+  for (const item of usersData) {
+    try {
+      const email = item.email?.trim().toLowerCase();
+      if (!email) {
+        results.failed++;
+        results.errors.push(`Nama "${item.name || 'Tanpa Nama'}": Email tidak boleh kosong`);
+        continue;
+      }
+      if (!item.name?.trim()) {
+        results.failed++;
+        results.errors.push(`Email "${item.email}": Nama tidak boleh kosong`);
+        continue;
+      }
+      if (!item.passwordRaw || String(item.passwordRaw).trim().length < 6) {
+        results.failed++;
+        results.errors.push(`Email "${item.email}": Password harus minimal 6 karakter`);
+        continue;
+      }
+
+      // Check if user already exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+      if (existingUser) {
+        results.failed++;
+        results.errors.push(`Email "${item.email}" sudah digunakan`);
+        continue;
+      }
+
+      const hashedPassword = await hashPassword(String(item.passwordRaw));
+      
+      const role = item.role === Role.ADMIN ? Role.STUDENT : (item.role || Role.STUDENT); // prevent creating admins via bulk upload
+      const educationLevels = Array.isArray(item.educationLevels) ? item.educationLevels : [];
+
+      await prisma.user.create({
+        data: {
+          name: item.name.trim(),
+          email,
+          password: hashedPassword,
+          role,
+          approvalStatus: ApprovalStatus.APPROVED,
+          isVerified: true,
+          educationLevels,
+          profile: {
+            create: {
+              bio: "Halo, saya pengguna WordIT!",
+              totalPoints: 0,
+              badges: [],
+            },
+          },
+        },
+      });
+
+      results.success++;
+    } catch (err: any) {
+      results.failed++;
+      results.errors.push(`Email "${item.email}": ${err.message || "Gagal menyimpan ke database"}`);
+    }
+  }
+
+  await createSystemLog({
+    action: "BULK_IMPORT_USERS",
+    details: `Imported users mass: ${results.success} success, ${results.failed} failed. Initiated by Admin ${admin?.name || "Admin"}`,
+    userId: adminUserId,
+    userName: admin?.name || "Admin",
+  });
+
+  return results;
+};

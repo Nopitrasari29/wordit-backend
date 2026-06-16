@@ -198,3 +198,24 @@ export const getStudentLeaderboard = async (req: Request, res: Response) => {
     res.status(400).json(errorResponse(message));
   }
 };
+
+// ============================================================
+// ADMIN ONLY: BULK IMPORT USERS
+// ============================================================
+export const bulkImportUsers = async (req: Request, res: Response) => {
+  try {
+    const adminUserId = req.user?.userId;
+    const { users } = req.body as { users: any[] };
+
+    if (!Array.isArray(users)) {
+      res.status(400).json(errorResponse("Format request salah. Parameter 'users' harus berupa array."));
+      return;
+    }
+
+    const result = await userService.bulkImportUsers(users, adminUserId);
+    res.status(200).json(successResponse(result, "Proses impor massal selesai"));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal memproses impor massal";
+    res.status(400).json(errorResponse(message));
+  }
+};
