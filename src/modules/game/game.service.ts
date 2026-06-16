@@ -782,18 +782,20 @@ export const saveLeaderboard = async (
     for (const player of finalPlayers) {
       if (!player.name) continue;
 
-      // Cek apakah data sesi untuk nama pemain ini sudah ada dan selesai
+      // Cek sesi terakhir dari pemain ini (baik siswa terdaftar maupun guest)
       const existingSession = await prisma.gameSession.findFirst({
         where: {
           gameId: game.id,
-          playerName: player.name,
-          isCompleted: true,
+          ...(player.userId 
+            ? { userId: player.userId } 
+            : { playerName: player.name })
         },
+        orderBy: { startedAt: "desc" },
         include: { result: true },
       });
 
       if (!existingSession) {
-        // Buat sesi baru untuk guest/tester/siswa
+        // Buat sesi baru untuk guest/tester/siswa jika belum pernah terdaftar sama sekali
         const newSession = await prisma.gameSession.create({
           data: {
             gameId: game.id,
@@ -826,20 +828,25 @@ export const saveLeaderboard = async (
           });
         }
 
-        if (!existingSession.result) {
-          // Jika sesi ada tapi belum ada hasil nilainya, buat datanya
-          await prisma.result.create({
-            data: {
-              sessionId: existingSession.id,
-              scoreValue: player.score || 0,
-              maxScore: 1000,
-              accuracy: player.accuracy !== undefined ? player.accuracy : 100,
-              timeSpent: player.timeSpent || 60,
-              difficultyPlayed: game.difficulty,
-              answersDetail: [],
-            },
-          });
-        }
+        // Upsert hasil nilai untuk sesi terakhir agar skor terupdate (Case Remidi / Penyelesaian Sesi)
+        await prisma.result.upsert({
+          where: { sessionId: existingSession.id },
+          update: {
+            scoreValue: player.score || 0,
+            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
+            timeSpent: player.timeSpent || 60,
+          },
+          create: {
+            sessionId: existingSession.id,
+            scoreValue: player.score || 0,
+            maxScore: 1000,
+            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
+            timeSpent: player.timeSpent || 60,
+            difficultyPlayed: game.difficulty,
+            answersDetail: [],
+          },
+        });
+        console.log(`💾 Synced player score for existing session: ${player.name} (${player.score} pts, sessionId: ${existingSession.id})`);
       }
     }
 
