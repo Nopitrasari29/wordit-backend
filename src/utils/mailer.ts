@@ -25,7 +25,7 @@ export const sendResetPasswordEmail = async (toEmail: string, resetLink: string)
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
         <div style="text-align: center; margin-bottom: 15px;">
-          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+          <img src="${env.frontendUrl}/4.svg" alt="WordIT Logo" style="height: 40px; object-fit: contain;" />
         </div>
         <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Reset Password WordIT</h2>
         <p>Halo,</p>
@@ -62,7 +62,7 @@ export const sendVerificationEmail = async (toEmail: string, verificationLink: s
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
         <div style="text-align: center; margin-bottom: 15px;">
-          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+          <img src="${env.frontendUrl}/4.svg" alt="WordIT Logo" style="height: 40px; object-fit: contain;" />
         </div>
         <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Verifikasi Email WordIT</h2>
         <p>Halo,</p>
@@ -100,7 +100,7 @@ export const sendWelcomeEmail = async (toEmail: string, name: string, passwordRa
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
         <div style="text-align: center; margin-bottom: 15px;">
-          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+          <img src="${env.frontendUrl}/4.svg" alt="WordIT Logo" style="height: 40px; object-fit: contain;" />
         </div>
         <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Selamat Datang di WordIT! 👋</h2>
         <p>Halo <strong>${name}</strong>,</p>
