@@ -24,7 +24,10 @@ export const sendResetPasswordEmail = async (toEmail: string, resetLink: string)
     subject: "Reset Password WordIT",
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-        <h2 style="color: #4f46e5; text-align: center;">Reset Password WordIT</h2>
+        <div style="text-align: center; margin-bottom: 15px;">
+          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+        </div>
+        <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Reset Password WordIT</h2>
         <p>Halo,</p>
         <p>Kami menerima permintaan untuk mereset password akun Anda di WordIT. Silakan klik tombol di bawah ini untuk mereset password Anda:</p>
         <div style="text-align: center; margin: 30px 0;">
@@ -58,7 +61,10 @@ export const sendVerificationEmail = async (toEmail: string, verificationLink: s
     subject: "Verifikasi Email Akun WordIT",
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-        <h2 style="color: #4f46e5; text-align: center;">Verifikasi Email WordIT</h2>
+        <div style="text-align: center; margin-bottom: 15px;">
+          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+        </div>
+        <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Verifikasi Email WordIT</h2>
         <p>Halo,</p>
         <p>Terima kasih telah mendaftar di WordIT. Untuk mengaktifkan akun Anda, silakan verifikasi alamat email dengan menekan tombol di bawah ini.</p>
         <div style="text-align:center; margin:30px 0;">
@@ -93,7 +99,10 @@ export const sendWelcomeEmail = async (toEmail: string, name: string, passwordRa
     subject: "Selamat Datang di WordIT! 🎉",
     html: `
       <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-        <h2 style="color: #4f46e5; text-align: center;">Selamat Datang di WordIT! 👋</h2>
+        <div style="text-align: center; margin-bottom: 15px;">
+          <img src="${env.frontendUrl}/favicon.png" alt="WordIT Logo" style="width: 48px; height: 48px; object-fit: contain;" />
+        </div>
+        <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Selamat Datang di WordIT! 👋</h2>
         <p>Halo <strong>${name}</strong>,</p>
         <p>Akun Anda telah berhasil didaftarkan oleh Admin. Sekarang Anda dapat langsung masuk ke platform menggunakan kredensial di bawah ini tanpa perlu verifikasi tambahan:</p>
         
