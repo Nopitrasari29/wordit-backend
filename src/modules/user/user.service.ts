@@ -4,6 +4,7 @@ import { FileManager } from "../../utils/FileManager";
 import { Prisma, Role, ApprovalStatus, EducationLevel } from "@prisma/client";
 import type { UpdateUserInput } from "./user.schema";
 import { createSystemLog } from "../../utils/system-logger";
+import { sendWelcomeEmail } from "../../utils/mailer";
 
 // ============================================================
 // 1. GET ALL USERS (Admin Dashboard)
@@ -62,7 +63,7 @@ export const approveTeacher = async (
   action: "APPROVE" | "REJECT",
   adminUserId?: string
 ) => {
-  const user = await prisma.user.findUnique({ 
+  const user = await prisma.user.findUnique({
     where: { id: targetUserId },
     include: { profile: true }
   });
@@ -80,7 +81,7 @@ export const approveTeacher = async (
   if (action === "APPROVE" && user.profile && user.profile.bio && user.profile.bio.includes("||PENDING_REQ_LEVELS||")) {
     try {
       const parts = user.profile.bio.split("||PENDING_REQ_LEVELS||");
-      cleanBio = parts[0] ? parts[0].trim() : ""; 
+      cleanBio = parts[0] ? parts[0].trim() : "";
       if (parts[1]) {
         finalEducationLevels = JSON.parse(parts[1]);
       }
@@ -93,7 +94,7 @@ export const approveTeacher = async (
 
   const updated = await prisma.user.update({
     where: { id: targetUserId },
-    data: { 
+    data: {
       approvalStatus: newStatus,
       educationLevels: finalEducationLevels,
       profile: {
@@ -199,15 +200,15 @@ export const getProfile = async (userId: string) => {
 // ============================================================
 export const updateProfile = async (
   userId: string,
-  data: any, 
+  data: any,
   photoFile?: Express.Multer.File
 ) => {
   // Ambil data user lengkap beserta profilnya
-  const user = await prisma.user.findUnique({ 
+  const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { profile: true } 
+    include: { profile: true }
   });
-  
+
   if (!user) throw new Error("User not found");
 
   if (data.email && data.email !== user.email) {
@@ -231,7 +232,7 @@ export const updateProfile = async (
 
   // Membaca request langsung dari parameter data terowongan controller
   let textBioToSave = data.bio !== undefined ? data.bio : user.profile?.bio || "";
-  
+
   // Jika ada titipan data dari pemisah string sebelumnya, bersihkan dulu agar tidak bertumpuk berulang-ulang
   if (textBioToSave.includes("||PENDING_REQ_LEVELS||")) {
     textBioToSave = textBioToSave.split("||PENDING_REQ_LEVELS||")[0].trim();
@@ -259,7 +260,7 @@ export const updateProfile = async (
       ...(hashedPassword && { password: hashedPassword }),
       photoUrl: updatedPicturePath,
       approvalStatus: data.approvalStatus ?? user.approvalStatus, // Ubah akun ke status PENDING secara resmi jika dipicu
-      
+
       // KUNCI UTAMA WORKFLOW: Jangan pernah ubah kolom utama jika status pengajuannya adalah PENDING!
       ...(data.approvalStatus !== "PENDING" && data.educationLevels !== undefined && {
         educationLevels: data.educationLevels,
@@ -522,7 +523,7 @@ export const bulkImportUsers = async (
       }
 
       const hashedPassword = await hashPassword(String(item.passwordRaw));
-      
+
       const role = item.role === Role.ADMIN ? Role.STUDENT : (item.role || Role.STUDENT); // prevent creating admins via bulk upload
       const educationLevels = Array.isArray(item.educationLevels) ? item.educationLevels : [];
 
@@ -543,6 +544,11 @@ export const bulkImportUsers = async (
             },
           },
         },
+      });
+      
+      // Kirim welcome email secara asynchronous (background task) agar tidak menghambat response API
+      sendWelcomeEmail(email, item.name.trim(), String(item.passwordRaw)).catch((emailErr) => {
+        console.error(`❌ Gagal mengirim welcome email ke ${email}:`, emailErr);
       });
 
       results.success++;
