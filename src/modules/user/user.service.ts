@@ -408,6 +408,42 @@ export const deleteUser = async (userId: string, adminUserId?: string) => {
 };
 
 // ============================================================
+// 8. BULK DELETE USERS (Admin Only)
+// ============================================================
+export const bulkDeleteUsers = async (userIds: string[], adminUserId?: string) => {
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw new Error("Daftar ID user tidak boleh kosong");
+  }
+
+  const results = {
+    total: userIds.length,
+    success: 0,
+    failed: 0,
+    errors: [] as string[],
+  };
+
+  for (const userId of userIds) {
+    try {
+      await deleteUser(userId, adminUserId);
+      results.success++;
+    } catch (err: any) {
+      results.failed++;
+      results.errors.push(`User ID "${userId}": ${err.message || "Gagal dihapus"}`);
+    }
+  }
+
+  const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
+  await createSystemLog({
+    action: "BULK_DELETE_USERS",
+    details: `Bulk delete: ${results.success} berhasil, ${results.failed} gagal. Oleh Admin ${admin?.name || "Admin"}`,
+    userId: adminUserId,
+    userName: admin?.name || "Admin",
+  });
+
+  return results;
+};
+
+// ============================================================
 // 8. GET STUDENT LEADERBOARD (Top 10 Students by XP/totalPoints)
 // ============================================================
 export const getStudentLeaderboard = async () => {

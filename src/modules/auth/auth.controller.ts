@@ -2,6 +2,7 @@ import type { Request, Response } from "express"
 import { registerSchema, loginSchema, ltiLoginSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema"
 import * as authService from "./auth.service"
 import { successResponse, errorResponse } from "../../utils/response"
+import { env } from "../../config/env"
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -84,6 +85,12 @@ export const logout = async (req: Request, res: Response) => {
 }
 
 export const ltiLogin = async (req: Request, res: Response) => {
+  // SEC-01: Tolak semua akses ke endpoint LTI jika fitur tidak diaktifkan secara eksplisit
+  if (!env.ltiEnabled) {
+    res.status(403).json(errorResponse("Fitur LTI SSO tidak aktif pada instance ini."))
+    return
+  }
+
   try {
     const parsed = ltiLoginSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -91,7 +98,9 @@ export const ltiLogin = async (req: Request, res: Response) => {
       return
     }
 
-    const result = await authService.ltiLogin(parsed.data)
+    // Sertakan token LTI dari body (jika ada) untuk validasi di service
+    const ltiToken = req.body.ltiToken as string | undefined
+    const result = await authService.ltiLogin(parsed.data, ltiToken)
     res.status(200).json(successResponse(result, "LTI Login successful"))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "LTI Login failed"

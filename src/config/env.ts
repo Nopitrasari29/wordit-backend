@@ -18,6 +18,9 @@ export const env = {
   smtpSecure: process.env.SMTP_SECURE === "true",
   smtpFrom: process.env.SMTP_FROM || '"WordIT" <noreply@wordit.local>',
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  // 🔐 LTI SSO - dinonaktifkan by default untuk keamanan (SEC-01)
+  ltiEnabled: process.env.LTI_ENABLED === "true",
+  moodleJwksUri: process.env.MOODLE_JWKS_URI || "",
 }
 
 // Validasi env wajib

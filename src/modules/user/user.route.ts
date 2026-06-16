@@ -28,6 +28,10 @@ router.get("/", authMiddleware(["ADMIN"]), userController.getAllUsers);
 // Bulk import users
 router.post("/bulk-import", authMiddleware(["ADMIN"]), userController.bulkImportUsers);
 
+// Hapus massal user (bulk delete)
+// DELETE /api/users/bulk-delete  body: { userIds: ["id1", "id2", ...] }
+router.delete("/bulk-delete", authMiddleware(["ADMIN"]), userController.bulkDeleteUsers);
+
 // Approve / Reject Teacher
 // PATCH /api/users/:id/approve  body: { action: "APPROVE" | "REJECT" }
 router.patch("/:id/approve", authMiddleware(["ADMIN"]), userController.approveTeacher);

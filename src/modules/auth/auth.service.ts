@@ -29,10 +29,10 @@ export const register = async (data: RegisterInput) => {
     data.role === "TEACHER" ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED;
 
   const verificationToken =
-  crypto.randomBytes(32).toString("hex");
+    crypto.randomBytes(32).toString("hex");
 
   const verificationTokenExpires =
-  new Date(Date.now() + 24 * 60 * 60 * 1000);
+    new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const user = await prisma.user.create({
     data: {
@@ -240,7 +240,15 @@ export const logout = async (userId: string) => {
   return { message: "Logged out successfully" };
 };
 
-export const ltiLogin = async (data: LtiLoginInput) => {
+export const ltiLogin = async (data: LtiLoginInput, ltiToken?: string) => {
+  // SEC-01: Validasi bahwa token LTI disertakan (menandakan request berasal dari Moodle)
+  // Catatan: Untuk keamanan penuh, lakukan verifikasi JWT JWKS di sini jika MOODLE_JWKS_URI di-set.
+  if (!ltiToken) {
+    console.warn(`[SEC-01] Percobaan LTI login tanpa token dari email: ${data.email}. Request ditolak.`);
+    throw new Error("Token LTI tidak valid. Akses hanya diperbolehkan melalui Moodle LTI launch.");
+  }
+
+  console.log(`[LTI SSO] Login diterima untuk email: ${data.email}. Token LTI hadir.`);
   let user = await prisma.user.findUnique({
     where: { email: data.email },
   });
@@ -310,7 +318,7 @@ export const ltiLogin = async (data: LtiLoginInput) => {
 
 export const requestPasswordReset = async (email: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
-  
+
   // Security best practice: Don't reveal if the user exists
   if (!user) {
     console.log(`[RESET PASSWORD] Request for non-existent email: ${email}`);
@@ -329,9 +337,9 @@ export const requestPasswordReset = async (email: string) => {
   const { env } = await import("../../config/env");
   const { sendResetPasswordEmail } = await import("../../utils/mailer");
   const resetLink = `${env.frontendUrl}/reset-password?token=${token}`;
-  
+
   await sendResetPasswordEmail(email, resetLink);
-  
+
   await createSystemLog({
     action: "REQUEST_RESET_PASSWORD",
     details: `User ${user.name} requested password reset`,
@@ -342,7 +350,7 @@ export const requestPasswordReset = async (email: string) => {
 
 export const resetPassword = async (token: string, newPassword: string) => {
   const { redis } = await import("../../config/redis");
-  
+
   // Fetch email from Redis
   const email = await redis.get(`forgot-token:${token}`);
   if (!email) {
@@ -399,7 +407,7 @@ export const verifyEmail = async (
   if (
     !user.verificationTokenExpires ||
     (user.verificationTokenExpires as Date) <
-      new Date()
+    new Date()
   ) {
     throw new Error(
       "Token verifikasi sudah kadaluarsa."

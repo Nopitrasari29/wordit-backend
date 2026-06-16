@@ -200,6 +200,34 @@ export const getStudentLeaderboard = async (req: Request, res: Response) => {
 };
 
 // ============================================================
+// ADMIN ONLY: BULK DELETE USERS
+// ============================================================
+export const bulkDeleteUsers = async (req: Request, res: Response) => {
+  try {
+    const adminUserId = req.user?.userId;
+    const { userIds } = req.body as { userIds: string[] };
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      res.status(400).json(errorResponse("Parameter 'userIds' harus berupa array tidak kosong."));
+      return;
+    }
+
+    // Cegah admin menghapus dirinya sendiri dalam bulk delete
+    const safeIds = userIds.filter((id) => id !== adminUserId);
+    if (safeIds.length === 0) {
+      res.status(400).json(errorResponse("Tidak dapat menghapus akun admin yang sedang aktif."));
+      return;
+    }
+
+    const result = await userService.bulkDeleteUsers(safeIds, adminUserId);
+    res.status(200).json(successResponse(result, `Hapus massal selesai: ${result.success} berhasil, ${result.failed} gagal`));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal memproses hapus massal";
+    res.status(400).json(errorResponse(message));
+  }
+};
+
+// ============================================================
 // ADMIN ONLY: BULK IMPORT USERS
 // ============================================================
 export const bulkImportUsers = async (req: Request, res: Response) => {
