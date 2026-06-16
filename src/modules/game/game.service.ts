@@ -772,6 +772,22 @@ export const saveLeaderboard = async (
     });
     if (!game) return;
 
+    // Calculate dynamic maxScore based on template content questions/words/pairs/cards count
+    const content = game.gameJson as any;
+    let totalQuestions = 0;
+    if (game.templateType === TemplateType.MULTIPLE_CHOICE || game.templateType === TemplateType.TRUE_FALSE || game.templateType === TemplateType.MAZE_CHASE || game.templateType === TemplateType.SPIN_THE_WHEEL) {
+      totalQuestions = content?.questions?.length || 0;
+    } else if (game.templateType === TemplateType.MATCHING) {
+      totalQuestions = content?.pairs?.length || 0;
+    } else if (game.templateType === TemplateType.ANAGRAM || game.templateType === TemplateType.HANGMAN || game.templateType === TemplateType.WORD_SEARCH) {
+      totalQuestions = content?.words?.length || 0;
+    } else if (game.templateType === TemplateType.FLASHCARD) {
+      totalQuestions = content?.cards?.length || 0;
+    } else {
+      totalQuestions = content?.questions?.length || 0;
+    }
+    const dynamicMaxScore = totalQuestions * 100 || 100;
+
     // 1. Tutup semua sesi aktif untuk kuis ini
     await prisma.gameSession.updateMany({
       where: { gameId: game.id, isCompleted: false },
@@ -811,7 +827,7 @@ export const saveLeaderboard = async (
           data: {
             sessionId: newSession.id,
             scoreValue: player.score || 0,
-            maxScore: 1000,
+            maxScore: dynamicMaxScore,
             accuracy: player.accuracy !== undefined ? player.accuracy : 100,
             timeSpent: player.timeSpent || 60,
             difficultyPlayed: game.difficulty,
@@ -828,25 +844,36 @@ export const saveLeaderboard = async (
           });
         }
 
+        // Ambil nilai yang sudah ada dari database jika ada untuk dibandingkan
+        const existingResult = existingSession.result;
+        const currentScore = existingResult?.scoreValue ?? 0;
+        const currentAccuracy = existingResult?.accuracy ?? 0;
+        const currentTimeSpent = existingResult?.timeSpent ?? 999999;
+
+        const newScore = Math.max(currentScore, player.score || 0);
+        const newAccuracy = Math.max(currentAccuracy, player.accuracy !== undefined ? player.accuracy : 0);
+        const newTimeSpent = Math.min(currentTimeSpent, player.timeSpent || 60);
+
         // Upsert hasil nilai untuk sesi terakhir agar skor terupdate (Case Remidi / Penyelesaian Sesi)
         await prisma.result.upsert({
           where: { sessionId: existingSession.id },
           update: {
-            scoreValue: player.score || 0,
-            accuracy: player.accuracy !== undefined ? player.accuracy : 100,
-            timeSpent: player.timeSpent || 60,
+            scoreValue: newScore,
+            accuracy: newAccuracy,
+            timeSpent: newTimeSpent === 999999 ? 60 : newTimeSpent,
+            maxScore: dynamicMaxScore,
           },
           create: {
             sessionId: existingSession.id,
             scoreValue: player.score || 0,
-            maxScore: 1000,
+            maxScore: dynamicMaxScore,
             accuracy: player.accuracy !== undefined ? player.accuracy : 100,
             timeSpent: player.timeSpent || 60,
             difficultyPlayed: game.difficulty,
             answersDetail: [],
           },
         });
-        console.log(`💾 Synced player score for existing session: ${player.name} (${player.score} pts, sessionId: ${existingSession.id})`);
+        console.log(`💾 Synced player score for existing session: ${player.name} (${newScore} pts, sessionId: ${existingSession.id})`);
       }
     }
 

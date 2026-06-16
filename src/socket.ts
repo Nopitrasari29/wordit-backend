@@ -53,7 +53,9 @@ export const initSocket = (httpServer: HttpServer) => {
       socket.join(roomCode);
       console.log(`✅ SUCCESS: Host joined Room [${roomCode}]`);
 
-      if (!rooms[roomCode]) {
+      // Reset lobby to a fresh clean state with 0 players if the room does not exist or is in waiting status.
+      // If the room is already "playing" (active gameplay), keep the state to allow host reconnection.
+      if (!rooms[roomCode] || rooms[roomCode].status === "waiting") {
         rooms[roomCode] = {
           status: "waiting",
           players: [],
@@ -179,6 +181,14 @@ export const initSocket = (httpServer: HttpServer) => {
         isExist.id = socket.id;
         isExist.isOnline = true;
         if (userId) isExist.userId = userId;
+
+        // Reset score and progress to 0 if the lobby is in "waiting" state (starting a new game session)
+        if (room.status === "waiting") {
+          isExist.score = 0;
+          isExist.accuracy = 100;
+          isExist.progress = "";
+        }
+
         const timerKey = `${roomCode}_${playerName}`;
         if (reconnectTimers[timerKey]) {
           clearTimeout(reconnectTimers[timerKey]);
@@ -337,6 +347,17 @@ export const initSocket = (httpServer: HttpServer) => {
         io.to(roomCode).emit("gameFinished", finalPlayers);
         delete rooms[roomCode];
         console.log(`🗑️ Room ${roomCode} cleared from memory.`);
+      }
+    });
+
+    // 5b. 🚪 HOST LEAVE: Guru keluar dari ruangan / kembali ke dashboard
+    socket.on("hostLeave", (code: string) => {
+      const roomCode = code?.toUpperCase().trim();
+      const room = rooms[roomCode];
+      if (room && room.hostSocketId === socket.id) {
+        io.to(roomCode).emit("hostDisconnected");
+        delete rooms[roomCode];
+        console.log(`🗑️ Room ${roomCode} deleted because host left lobby.`);
       }
     });
 
