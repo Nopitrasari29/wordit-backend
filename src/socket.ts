@@ -63,6 +63,22 @@ export const initSocket = (httpServer: HttpServer) => {
           pendingStudents: [],
           kickedStudents: [],
         };
+        // 🛠️ Reset Redis leaderboard key on hostJoin / lobby reset
+        try {
+          const { prisma } = require("./config/database");
+          const { redis } = require("./config/redis");
+          prisma.game.findFirst({
+            where: { shareCode: roomCode },
+            select: { id: true }
+          }).then((game: any) => {
+            if (game) {
+              redis.del(`leaderboard:${game.id}`);
+              console.log(`🗑️ Resetting Redis leaderboard for game ${game.id} on hostJoin`);
+            }
+          }).catch((err: any) => console.error("Error resetting leaderboard on hostJoin:", err));
+        } catch (redisErr) {
+          console.error("Error loading config/modules for hostJoin reset:", redisErr);
+        }
       }
       rooms[roomCode].hostSocketId = socket.id;
 
@@ -314,7 +330,7 @@ export const initSocket = (httpServer: HttpServer) => {
     });
 
     // 4. 🚀 START GAME
-    socket.on("startGame", (code: string) => {
+    socket.on("startGame", async (code: string) => {
       const roomCode = code?.toUpperCase().trim();
       const room = rooms[roomCode];
       if (!room) return;
@@ -323,6 +339,23 @@ export const initSocket = (httpServer: HttpServer) => {
 
       room.status = "playing";
       console.log(`🚀 START SIGNAL: Room ${roomCode} is now playing.`);
+
+      // Clear the Redis leaderboard for this game session on game start to ensure clean leaderboard
+      try {
+        const { prisma } = require("./config/database");
+        const { redis } = require("./config/redis");
+        const game = await prisma.game.findFirst({
+          where: { shareCode: roomCode },
+          select: { id: true }
+        });
+        if (game) {
+          await redis.del(`leaderboard:${game.id}`);
+          console.log(`🗑️ Resetting Redis leaderboard for game ${game.id} on startGame`);
+        }
+      } catch (err) {
+        console.error("❌ Failed to clear Redis leaderboard on startGame:", err);
+      }
+
       io.to(roomCode).emit("gameStarted", roomCode);
     });
 

@@ -303,8 +303,13 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
   });
 
   const extractGroup = (playerName: string): string => {
+    if (playerName && playerName.includes("_")) {
+      const firstPart = playerName.split("_")[0];
+      const groupName = firstPart ? firstPart.trim() : "";
+      return groupName ? groupName.toUpperCase() : "UMUM";
+    }
     const match = playerName.match(/^(.+?)[_\-\s]/);
-    const groupName = match?.[1]?.trim();
+    const groupName = match && match[1] ? match[1].trim() : "";
     return groupName ? groupName.toUpperCase() : "UMUM";
   };
 

@@ -365,10 +365,16 @@ export const submitAnswer = async (
   }
 
   const score = earnedPoints !== undefined ? earnedPoints : isCorrect ? 100 : 0;
-
   const redisKey = `leaderboard:${gameId}`;
   const identity = playerName || userId;
-  await redis.zincrby(redisKey, score, identity);
+
+  if (earnedPoints !== undefined) {
+    // 🛠️ FIX REVISI 1: Jika frontend mengirimkan nilai kumulatif, gunakan zadd untuk menimpa skor di Redis dengan tepat
+    await redis.zadd(redisKey, earnedPoints, identity);
+  } else {
+    // Jika tidak mengirimkan nilai kumulatif, gunakan zincrby dengan nilai fallback
+    await redis.zincrby(redisKey, score, identity);
+  }
 
   const rawTopScores = await redis.zrevrange(redisKey, 0, 9, "WITHSCORES");
   const formattedScores: { name: string; score: number }[] = [];
