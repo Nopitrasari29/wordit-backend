@@ -19,6 +19,7 @@ interface RoomState {
   allowLateJoin: boolean;
   pendingStudents: PendingStudent[];
   kickedStudents: string[]; // Tetap dipertahankan di interface agar tidak merusak type-checking
+  startedAt?: number;
 }
 
 const rooms: Record<string, RoomState> = {};
@@ -338,6 +339,7 @@ export const initSocket = (httpServer: HttpServer) => {
       if (room.hostSocketId !== socket.id) return;
 
       room.status = "playing";
+      room.startedAt = Date.now();
       console.log(`🚀 START SIGNAL: Room ${roomCode} is now playing.`);
 
       // Clear the Redis leaderboard for this game session on game start to ensure clean leaderboard
@@ -367,7 +369,11 @@ export const initSocket = (httpServer: HttpServer) => {
       if (room) {
         if (room.hostSocketId !== socket.id) return;
 
-        const finalPlayers = room.players;
+        const elapsed = room.startedAt ? Math.round((Date.now() - room.startedAt) / 1000) : 60;
+        const finalPlayers = room.players.map((p) => ({
+          ...p,
+          timeSpent: p.timeSpent || elapsed || 60,
+        }));
         console.log(`🏁 FINISH SIGNAL: Saving results for ${roomCode}`);
 
         try {
@@ -405,7 +411,12 @@ export const initSocket = (httpServer: HttpServer) => {
             
             try {
               const { saveLeaderboard } = require("./modules/game/game.service");
-              saveLeaderboard(roomCode, room.players).catch((err: any) => {
+              const elapsed = room.startedAt ? Math.round((Date.now() - room.startedAt) / 1000) : 60;
+              const finalPlayers = room.players.map((p: any) => ({
+                ...p,
+                timeSpent: p.timeSpent || elapsed || 60,
+              }));
+              saveLeaderboard(roomCode, finalPlayers).catch((err: any) => {
                 console.error(`❌ Gagal menutup sesi DB otomatis pada host disconnect:`, err);
               });
             } catch (importErr) {
