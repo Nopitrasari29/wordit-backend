@@ -9,7 +9,7 @@ export const seedUsers = async () => {
     {
       name: "Super Admin WordIT",
       email: "wordit.official@gmail.com",
-      password: await hashPassword("admin123"),
+      password: await hashPassword("WordIT2026_pass!"),
       role: Role.SUPER_ADMIN,
       approvalStatus: ApprovalStatus.APPROVED,
       educationLevels: [] as EducationLevel[],
@@ -52,7 +52,7 @@ export const seedUsers = async () => {
         approvalStatus: user.approvalStatus,
         educationLevels: user.educationLevels,
         // 🛠️ FIX: Gunakan field 'isVerified' sesuai dengan database schema kamu
-        isVerified: true, 
+        isVerified: true,
       },
       create: {
         name: user.name,
