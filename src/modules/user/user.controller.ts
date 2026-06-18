@@ -4,6 +4,7 @@ import * as userService from "./user.service";
 import { successResponse, errorResponse } from "../../utils/response";
 import { Role } from "@prisma/client";
 import { generateToken } from "../../utils/jwt";
+import { prisma } from "../../config/database";
 
 export const getProfile = async (req: Request, res: Response) => {
   try {
@@ -63,10 +64,26 @@ export const updateProfile = async (req: Request, res: Response) => {
       
       // 📝 WORKFLOW CONTROL: Jika akun TEACHER mengajukan perubahan jenjang baru
       if (requesterRole === Role.TEACHER && req.body.educationLevels !== undefined) {
-        // Suntikkan status PENDING dan amankan array barunya di properti khusus
-        updateData.approvalStatus = "PENDING";
-        updateData.educationLevels = req.body.educationLevels; 
-        console.log(`⚠️ Akun Teacher ${userId} meminta perubahan jenjang ke:`, updateData.educationLevels);
+        // Ambil data user saat ini untuk cek apakah jenjang benar-benar berubah
+        const currentUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { educationLevels: true }
+        });
+        
+        const currentLevels = currentUser?.educationLevels || [];
+        const requestedLevels = Array.isArray(req.body.educationLevels) ? req.body.educationLevels : [];
+        
+        const isSame = currentLevels.length === requestedLevels.length && 
+                       currentLevels.every((val: any) => requestedLevels.includes(val as any));
+                       
+        if (!isSame) {
+          // Hanya set PENDING jika jenjang benar-benar berubah
+          updateData.approvalStatus = "PENDING";
+          updateData.educationLevels = req.body.educationLevels; 
+          console.log(`⚠️ Akun Teacher ${userId} meminta perubahan jenjang ke:`, updateData.educationLevels);
+        } else {
+          delete updateData.approvalStatus;
+        }
       } else {
         delete updateData.approvalStatus;
       }
