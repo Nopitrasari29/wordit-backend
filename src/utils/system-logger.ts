@@ -5,14 +5,27 @@ export const createSystemLog = async ({
   details,
   userId,
   userName,
+  userEmail,
 }: {
   action: string;
   details?: string;
   userId?: string;
   userName?: string;
+  userEmail?: string;
 }) => {
   try {
     console.log("🔥 CREATE SYSTEM LOG:", action);
+
+    let resolvedEmail = userEmail;
+    if (!resolvedEmail && userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+      if (user) {
+        resolvedEmail = user.email;
+      }
+    }
 
     await prisma.systemLog.create({
       data: {
@@ -20,6 +33,7 @@ export const createSystemLog = async ({
         details,
         userId,
         userName,
+        userEmail: resolvedEmail,
       },
     });
 

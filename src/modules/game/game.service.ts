@@ -425,8 +425,12 @@ export const finishGame = async (
   // 🛠️ FIX SINKRONISASI UTAMA: Ambil nilai murni in-game siswa (300 XP / 520 XP) secara mutlak!
   let finalScore = payload.scoreValue !== undefined ? payload.scoreValue : 0;
   let finalAccuracy = payload.accuracy !== undefined ? payload.accuracy : 0;
-  const maxPossibleScore = payload.maxScore > 0 ? payload.maxScore : 100;
   const content = game.gameJson as any;
+
+  // 🎯 KALKULASI SKOR OTOMATIS: Cek konfigurasi maxScore dari guru di gameJson
+  // Jika guru mengatur maxScore, gunakan pembagian proporsional per soal.
+  // Jika tidak, default 100 poin per soal benar.
+  const configuredMaxScore: number | null = content.maxScore ? Number(content.maxScore) : null;
 
   let totalQuestions = 0;
   let correctAnswers = 0;
@@ -495,16 +499,49 @@ export const finishGame = async (
     totalQuestions = content.questions?.length || 0;
   }
 
+  // 🎯 BACKEND SCORING OVERRIDE: Hitung skor final di backend, bukan percaya payload frontend
+  // Ini memastikan skor guru dan siswa selalu sinkron.
+  let maxPossibleScore: number;
+  let pointsPerCorrectAnswer: number;
+
+  if (game.templateType !== TemplateType.ESSAY) {
+    if (configuredMaxScore && configuredMaxScore > 0 && totalQuestions > 0) {
+      // Guru sudah mengatur maxScore: hitung proporsional
+      pointsPerCorrectAnswer = Math.floor(configuredMaxScore / totalQuestions);
+      maxPossibleScore = configuredMaxScore;
+    } else {
+      // Default: 100 poin per soal benar
+      pointsPerCorrectAnswer = 100;
+      maxPossibleScore = totalQuestions * 100;
+    }
+
+    // Hitung total skor dari jawaban yang benar (dengan koreksi sisa untuk soal terakhir)
+    finalScore = 0;
+    for (let i = 0; i < tempMappedAnswers.length; i++) {
+      if (tempMappedAnswers[i].isCorrect) {
+        finalScore += pointsPerCorrectAnswer;
+      }
+    }
+
+    // Koreksi rounding untuk soal terakhir jika pakai maxScore
+    if (configuredMaxScore && configuredMaxScore > 0 && correctAnswers === totalQuestions && totalQuestions > 0) {
+      const roundingError = configuredMaxScore - finalScore;
+      if (roundingError !== 0 && tempMappedAnswers.length > 0) {
+        finalScore = configuredMaxScore;
+      }
+    }
+  } else {
+    maxPossibleScore = payload.maxScore > 0 ? payload.maxScore : 100;
+  }
+
   // 🛠️ CALCULATION OVERRIDE: Hitung pembagian poin per soal secara dinamis di riwayat siswa
   let updatedAnswersDetail: any[] = [];
   if (game.templateType !== TemplateType.ESSAY) {
-    const pointsPerCorrectAnswer = correctAnswers > 0 ? Math.round(finalScore / correctAnswers) : 0;
-
-    updatedAnswersDetail = tempMappedAnswers.map((ans: any) => ({
+    updatedAnswersDetail = tempMappedAnswers.map((ans: any, idx: number) => ({
       ...ans,
-      pointsEarned: ans.isCorrect ? pointsPerCorrectAnswer : 0,
-      score: ans.isCorrect ? pointsPerCorrectAnswer : 0,
-      points: ans.isCorrect ? pointsPerCorrectAnswer : 0
+      pointsEarned: ans.isCorrect ? pointsPerCorrectAnswer! : 0,
+      score: ans.isCorrect ? pointsPerCorrectAnswer! : 0,
+      points: ans.isCorrect ? pointsPerCorrectAnswer! : 0
     }));
   } else {
     updatedAnswersDetail = deDuplicatedAnswers;

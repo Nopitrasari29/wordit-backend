@@ -21,9 +21,9 @@ router.get("/game/:id", authMiddleware(), getGameAnalytics);
 router.delete("/remedial/:resultId", authMiddleware(["TEACHER"]), deleteResultForRemedialController);
 
 // 4. Endpoint Admin: Melihat statistik aplikasi dan log
-router.get("/admin/stats", authMiddleware(["ADMIN"]), getAdminStats);
+router.get("/admin/stats", authMiddleware(["SUPER_ADMIN"]), getAdminStats);
 
 // 5. Endpoint Admin: Melihat log aktivitas terpaginasi
-router.get("/admin/logs", authMiddleware(["ADMIN"]), getAdminLogs);
+router.get("/admin/logs", authMiddleware(["SUPER_ADMIN"]), getAdminLogs);
 
 export default router;

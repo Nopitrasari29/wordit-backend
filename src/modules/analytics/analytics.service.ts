@@ -336,7 +336,17 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
 
     answers.forEach((ans: any) => {
       if (ans.isCorrect === false) {
-        const idx = ans.questionIndex;
+        let idx = ans.questionIndex;
+        if (idx === undefined || idx === null || isNaN(Number(idx))) {
+          const qText = ans.question || ans.word || ans.front;
+          const foundIdx = questionsList.findIndex((q: any) => {
+            const matchText = q.question || q.word || q.front;
+            return matchText && qText && matchText.trim().toLowerCase() === qText.trim().toLowerCase();
+          });
+          idx = foundIdx !== -1 ? foundIdx : 0;
+        } else {
+          idx = Number(idx);
+        }
         const key = `${r.session.gameId}_${idx}`;
         let txt = ans.question || `Pertanyaan #${idx + 1}`;
         if (questionsList[idx]) {
@@ -390,7 +400,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
 
   const difficultQuestions = Object.entries(questionMistakes)
     .map(([key, q]) => ({
-      questionIndex: parseInt(key.split("_")[1]!),
+      questionIndex: parseInt(key.split("_").pop()!),
       questionText: q.text,
       mistakeCount: q.count
     }))

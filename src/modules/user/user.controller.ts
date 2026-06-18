@@ -58,7 +58,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     let updateData: any = { ...parsed.data };
 
     // 🛡️ SECURITY & APPROVAL WORKFLOW CONTROL
-    if (requesterRole !== Role.ADMIN) {
+    if (requesterRole !== Role.SUPER_ADMIN) {
       delete updateData.role;
       
       // 📝 WORKFLOW CONTROL: Jika akun TEACHER mengajukan perubahan jenjang baru
@@ -99,13 +99,15 @@ export const getMyGames = async (req: Request, res: Response) => {
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const result = await userService.getAllUsers(req.query);
+    const requester = req.user;
+    const result = await userService.getAllUsers(req.query, requester);
     res.status(200).json(successResponse(result, "Users fetched successfully"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to get users";
     res.status(400).json(errorResponse(message));
   }
 };
+
 
 export const approveTeacher = async (req: Request, res: Response) => {
   try {
@@ -158,18 +160,18 @@ export const approveTeacher = async (req: Request, res: Response) => {
 export const changeUserRole = async (req: Request, res: Response) => {
   try {
     const { id } = req.params as { id: string };
-    const { role } = req.body as { role: string };
+    const { role, hasAdminAccess } = req.body as { role?: string; hasAdminAccess?: boolean };
 
-    if (!role) {
-      res.status(400).json(errorResponse("Role wajib diisi"));
+    if (!role && hasAdminAccess === undefined) {
+      res.status(400).json(errorResponse("Role atau hasAdminAccess wajib diisi"));
       return;
     }
 
     const adminUserId = req.user?.userId;
-    const result = await userService.changeUserRole(id, role as Role, adminUserId);
-    res.status(200).json(successResponse(result, "Role berhasil diubah"));
+    const result = await userService.changeUserRole(id, role as Role, hasAdminAccess, adminUserId);
+    res.status(200).json(successResponse(result, "Data user berhasil diperbarui"));
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Gagal mengubah role";
+    const message = error instanceof Error ? error.message : "Gagal memperbarui data user";
     res.status(400).json(errorResponse(message));
   }
 };
@@ -233,6 +235,7 @@ export const bulkDeleteUsers = async (req: Request, res: Response) => {
 export const bulkImportUsers = async (req: Request, res: Response) => {
   try {
     const adminUserId = req.user?.userId;
+    const requester = req.user;
     const { users } = req.body as { users: any[] };
 
     if (!Array.isArray(users)) {
@@ -240,10 +243,45 @@ export const bulkImportUsers = async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await userService.bulkImportUsers(users, adminUserId);
+    const result = await userService.bulkImportUsers(users, adminUserId, requester);
     res.status(200).json(successResponse(result, "Proses impor massal selesai"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal memproses impor massal";
+    res.status(400).json(errorResponse(message));
+  }
+};
+
+// ============================================================
+// RBAC: REQUEST & APPROVE SCHOOL ADMIN
+// ============================================================
+export const requestSchoolAdmin = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json(errorResponse("Unauthorized")); return; }
+    const result = await userService.requestSchoolAdmin(userId);
+    res.status(200).json(successResponse(result, "Pengajuan Admin Sekolah berhasil dikirim. Menunggu persetujuan Super Admin."));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal mengajukan Admin Sekolah";
+    res.status(400).json(errorResponse(message));
+  }
+};
+
+export const approveSchoolAdmin = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params as { id: string };
+    const { action } = req.body as { action: string };
+    const superAdminId = req.user?.userId;
+
+    if (!["APPROVE", "REJECT"].includes(action)) {
+      res.status(400).json(errorResponse("Action harus APPROVE atau REJECT"));
+      return;
+    }
+
+    const result = await userService.approveSchoolAdmin(id, action as "APPROVE" | "REJECT", superAdminId);
+    const msg = action === "APPROVE" ? "Pengajuan Admin Sekolah disetujui" : "Pengajuan Admin Sekolah ditolak";
+    res.status(200).json(successResponse(result, msg));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal memproses pengajuan Admin Sekolah";
     res.status(400).json(errorResponse(message));
   }
 };

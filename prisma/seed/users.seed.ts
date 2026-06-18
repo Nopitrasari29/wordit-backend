@@ -7,10 +7,10 @@ export const seedUsers = async () => {
 
   const users = [
     {
-      name: "Admin WordIT",
-      email: "admin@wordit.com",
+      name: "Super Admin WordIT",
+      email: "wordit.official@gmail.com",
       password: await hashPassword("admin123"),
-      role: Role.ADMIN,
+      role: Role.SUPER_ADMIN,
       approvalStatus: ApprovalStatus.APPROVED,
       educationLevels: [] as EducationLevel[],
     },

@@ -18,7 +18,8 @@ datasource db {
 enum Role {
   STUDENT
   TEACHER
-  ADMIN
+  SCHOOL_ADMIN
+  SUPER_ADMIN
 }
 
 enum ApprovalStatus {
@@ -76,6 +77,12 @@ model User {
   
   educationLevels EducationLevel[]
   photoUrl       String?
+
+  // Multi-tenant sekolah & RBAC expansion
+  schoolOrigin        String?
+  phoneNumber         String?
+  hasAdminAccess      Boolean         @default(false)
+  adminRequestStatus  ApprovalStatus?
   
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -209,6 +216,7 @@ model SystemLog {
   details   String?
   userId    String?
   userName  String?
+  userEmail String?
   createdAt DateTime @default(now())
 
   @@index([createdAt])

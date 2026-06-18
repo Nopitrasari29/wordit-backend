@@ -9,7 +9,7 @@ import { sendWelcomeEmail } from "../../utils/mailer";
 // ============================================================
 // 1. GET ALL USERS (Admin Dashboard)
 // ============================================================
-export const getAllUsers = async (query: any) => {
+export const getAllUsers = async (query: any, requester?: any) => {
   const page = parseInt(query.page || "1");
   const limit = parseInt(query.limit || "10");
   const skip = (page - 1) * limit;
@@ -19,11 +19,21 @@ export const getAllUsers = async (query: any) => {
     ...(query.approvalStatus && {
       approvalStatus: query.approvalStatus as ApprovalStatus,
     }),
+    ...(query.adminRequestStatus && {
+      adminRequestStatus: query.adminRequestStatus as ApprovalStatus,
+    }),
+    ...(query.hasAdminAccess !== undefined && {
+      hasAdminAccess: query.hasAdminAccess === "true" || query.hasAdminAccess === true,
+    }),
     ...(query.search && {
       OR: [
         { name: { contains: query.search, mode: "insensitive" } },
         { email: { contains: query.search, mode: "insensitive" } },
       ],
+    }),
+    // SCHOOL_ADMIN hanya bisa lihat user dari sekolahnya sendiri
+    ...(requester?.role === "SCHOOL_ADMIN" && requester?.schoolOrigin && {
+      schoolOrigin: requester.schoolOrigin,
     }),
   };
 
@@ -38,6 +48,10 @@ export const getAllUsers = async (query: any) => {
         approvalStatus: true,
         educationLevels: true,
         photoUrl: true,
+        schoolOrigin: true,
+        phoneNumber: true,
+        hasAdminAccess: true,
+        adminRequestStatus: true,
         createdAt: true,
         _count: { select: { gamesCreated: true } },
         profile: { select: { bio: true, totalPoints: true } }
@@ -134,36 +148,59 @@ export const approveTeacher = async (
 // ============================================================
 // 3. CHANGE ROLE (Admin Only)
 // ============================================================
-export const changeUserRole = async (targetUserId: string, newRole: Role, adminUserId?: string) => {
+export const changeUserRole = async (
+  targetUserId: string,
+  newRole?: Role,
+  hasAdminAccess?: boolean,
+  adminUserId?: string
+) => {
   const user = await prisma.user.findUnique({ where: { id: targetUserId } });
   if (!user) throw new Error("User tidak ditemukan");
 
-  // Admin tidak bisa di-assign via endpoint
-  if (newRole === Role.ADMIN)
-    throw new Error("Tidak bisa assign role Admin via endpoint ini");
+  const dataToUpdate: Prisma.UserUpdateInput = {};
 
-  // Mencegah admin mengubah role sendiri (lockout lockout prevention)
-  if (adminUserId === targetUserId)
-    throw new Error("Admin tidak diizinkan mengubah role milik sendiri");
+  if (newRole) {
+    // Hanya Super Admin yang bisa assign SUPER_ADMIN, dan hanya untuk email resmi
+    if (newRole === Role.SUPER_ADMIN) {
+      throw new Error("Role SUPER_ADMIN hanya dapat diassign melalui seed database secara langsung.");
+    }
+    if ((newRole as string) === "ADMIN") {
+      throw new Error("Role ADMIN sudah tidak digunakan. Gunakan SUPER_ADMIN atau SCHOOL_ADMIN.");
+    }
 
-  const dataToUpdate: Prisma.UserUpdateInput = { role: newRole };
+    // Mencegah admin mengubah role sendiri
+    if (adminUserId === targetUserId)
+      throw new Error("Admin tidak diizinkan mengubah role milik sendiri");
 
-  if (newRole === Role.TEACHER && user.educationLevels.length === 0) {
-    dataToUpdate.educationLevels = [EducationLevel.SD];
-  } else if (newRole === Role.STUDENT) {
-    dataToUpdate.educationLevels = [];
+    dataToUpdate.role = newRole;
+
+    if (newRole === Role.TEACHER && user.educationLevels.length === 0) {
+      dataToUpdate.educationLevels = [EducationLevel.SD];
+    } else if (newRole === Role.STUDENT) {
+      dataToUpdate.educationLevels = [];
+    }
+  }
+
+  if (hasAdminAccess !== undefined) {
+    dataToUpdate.hasAdminAccess = hasAdminAccess;
+    // Auto sync role based on hasAdminAccess toggling
+    if (hasAdminAccess && user.role === Role.TEACHER) {
+      dataToUpdate.role = Role.SCHOOL_ADMIN;
+    } else if (!hasAdminAccess && user.role === Role.SCHOOL_ADMIN) {
+      dataToUpdate.role = Role.TEACHER;
+    }
   }
 
   const updated = await prisma.user.update({
     where: { id: targetUserId },
     data: dataToUpdate,
-    select: { id: true, name: true, email: true, role: true },
+    select: { id: true, name: true, email: true, role: true, hasAdminAccess: true },
   });
 
   const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
   await createSystemLog({
     action: "CHANGE_ROLE",
-    details: `User "${updated.name}" role changed to ${newRole} by Admin ${admin?.name || "Admin"}`,
+    details: `User "${updated.name}" updated (role: ${updated.role}, hasAdminAccess: ${updated.hasAdminAccess}) by Admin ${admin?.name || "Admin"}`,
     userId: adminUserId,
     userName: admin?.name || "Admin",
   });
@@ -482,7 +519,8 @@ export const bulkImportUsers = async (
     role: Role;
     educationLevels?: EducationLevel[];
   }>,
-  adminUserId?: string
+  adminUserId?: string,
+  requester?: any
 ) => {
   const admin = adminUserId ? await prisma.user.findUnique({ where: { id: adminUserId } }) : null;
 
@@ -524,8 +562,19 @@ export const bulkImportUsers = async (
 
       const hashedPassword = await hashPassword(String(item.passwordRaw));
 
-      const role = item.role === Role.ADMIN ? Role.STUDENT : (item.role || Role.STUDENT); // prevent creating admins via bulk upload
+      // SCHOOL_ADMIN hanya bisa membuat STUDENT dan TEACHER, bukan admin
+      let role: Role;
+      if (requester?.role === "SCHOOL_ADMIN") {
+        role = (item.role === Role.TEACHER) ? Role.TEACHER : Role.STUDENT;
+      } else {
+        role = (item.role === Role.SUPER_ADMIN || (item.role as string) === "ADMIN") ? Role.STUDENT : (item.role || Role.STUDENT);
+      }
       const educationLevels = Array.isArray(item.educationLevels) ? item.educationLevels : [];
+
+      // SCHOOL_ADMIN: otomatis set schoolOrigin ke sekolah admin
+      const schoolOrigin = (requester?.role === "SCHOOL_ADMIN" && requester?.schoolOrigin)
+        ? requester.schoolOrigin
+        : null;
 
       await prisma.user.create({
         data: {
@@ -536,6 +585,7 @@ export const bulkImportUsers = async (
           approvalStatus: ApprovalStatus.APPROVED,
           isVerified: true,
           educationLevels,
+          schoolOrigin,
           profile: {
             create: {
               bio: "Halo, saya pengguna WordIT!",
@@ -566,4 +616,69 @@ export const bulkImportUsers = async (
   });
 
   return results;
+};
+
+// ============================================================
+// RBAC: REQUEST SCHOOL ADMIN (oleh Teacher)
+// ============================================================
+export const requestSchoolAdmin = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User tidak ditemukan");
+  if (user.role !== Role.TEACHER && user.role !== Role.SCHOOL_ADMIN)
+    throw new Error("Hanya Teacher yang bisa mengajukan Admin Sekolah");
+  if (user.adminRequestStatus === ApprovalStatus.PENDING)
+    throw new Error("Pengajuan Admin Sekolah kamu masih dalam proses review");
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { adminRequestStatus: ApprovalStatus.PENDING, hasAdminAccess: false },
+    select: { id: true, name: true, email: true, role: true, adminRequestStatus: true },
+  });
+
+  await createSystemLog({
+    action: "REQUEST_SCHOOL_ADMIN",
+    details: `Teacher "${user.name}" mengajukan diri sebagai Admin Sekolah (Sekolah: ${user.schoolOrigin || 'N/A'})`,
+    userId,
+    userName: user.name,
+  });
+
+  return updated;
+};
+
+// ============================================================
+// RBAC: APPROVE/REJECT SCHOOL ADMIN (oleh Super Admin)
+// ============================================================
+export const approveSchoolAdmin = async (
+  targetUserId: string,
+  action: "APPROVE" | "REJECT",
+  superAdminId?: string
+) => {
+  const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+  if (!user) throw new Error("User tidak ditemukan");
+  if (user.adminRequestStatus !== ApprovalStatus.PENDING)
+    throw new Error("Tidak ada pengajuan Admin Sekolah yang sedang pending untuk user ini");
+
+  const isApproved = action === "APPROVE";
+  const newRole = isApproved ? Role.SCHOOL_ADMIN : user.role;
+  const newAdminRequestStatus = isApproved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
+
+  const updated = await prisma.user.update({
+    where: { id: targetUserId },
+    data: {
+      role: newRole,
+      adminRequestStatus: newAdminRequestStatus,
+      hasAdminAccess: isApproved,
+    },
+    select: { id: true, name: true, email: true, role: true, adminRequestStatus: true, hasAdminAccess: true },
+  });
+
+  const superAdmin = superAdminId ? await prisma.user.findUnique({ where: { id: superAdminId } }) : null;
+  await createSystemLog({
+    action: isApproved ? "APPROVE_SCHOOL_ADMIN" : "REJECT_SCHOOL_ADMIN",
+    details: `${isApproved ? 'Disetujui' : 'Ditolak'}: Teacher "${user.name}" sebagai Admin Sekolah oleh Super Admin ${superAdmin?.name || 'Super Admin'}`,
+    userId: superAdminId,
+    userName: superAdmin?.name || "Super Admin",
+  });
+
+  return updated;
 };

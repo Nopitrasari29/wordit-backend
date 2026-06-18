@@ -59,7 +59,7 @@ export const getTeacherClasses = async (req: Request, res: Response) => {
 export const getAdminStats = async (req: Request, res: Response) => {
     try {
         const user = (req as any).user;
-        if (!user || user.role !== "ADMIN") {
+        if (!user || user.role !== "SUPER_ADMIN") {
             return res.status(403).json({ status: "error", message: "Forbidden. Admin only." });
         }
 
@@ -76,7 +76,7 @@ export const getAdminStats = async (req: Request, res: Response) => {
 export const getAdminLogs = async (req: Request, res: Response) => {
     try {
         const user = (req as any).user;
-        if (!user || user.role !== "ADMIN") {
+        if (!user || user.role !== "SUPER_ADMIN") {
             return res.status(403).json({ status: "error", message: "Forbidden. Admin only." });
         }
 

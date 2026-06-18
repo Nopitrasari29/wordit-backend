@@ -12,8 +12,11 @@ import crypto from "crypto";
 
 export const register = async (data: RegisterInput) => {
   // BE-NEW-03: Admin TIDAK BISA register via endpoint
-  if ((data.role as string) === "ADMIN") {
+  if ((data.role as string) === "ADMIN" || (data.role as string) === "SUPER_ADMIN") {
     throw new Error("Registrasi sebagai Admin tidak diizinkan.");
+  }
+  if ((data.role as string) === "SCHOOL_ADMIN") {
+    throw new Error("Pengajuan Admin Sekolah harus dilakukan melalui menu khusus setelah mendaftar.");
   }
 
   // Cek email sudah ada atau belum
@@ -47,6 +50,8 @@ export const register = async (data: RegisterInput) => {
       educationLevels: data.educationLevels
         ? data.educationLevels
         : [],
+      schoolOrigin: data.schoolOrigin?.trim() || null,
+      phoneNumber: data.phoneNumber?.trim() || null,
       profile: {
         create: {
           bio: "Halo, saya pengguna baru WordIT!",
@@ -62,6 +67,8 @@ export const register = async (data: RegisterInput) => {
       role: true,
       approvalStatus: true,
       educationLevels: true,
+      schoolOrigin: true,
+      phoneNumber: true,
       createdAt: true,
     },
   });
@@ -136,6 +143,7 @@ export const register = async (data: RegisterInput) => {
     userId: user.id,
     email: data.email,
     role: user.role,
+    schoolOrigin: user.schoolOrigin,
   });
 
   return { user, token };
@@ -154,6 +162,8 @@ export const login = async (data: LoginInput) => {
       educationLevels: true,
       photoUrl: true,
       isVerified: true,
+      schoolOrigin: true,
+      phoneNumber: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -204,6 +214,7 @@ export const login = async (data: LoginInput) => {
     userId: user.id,
     email: user.email,
     role: user.role,
+    schoolOrigin: (user as any).schoolOrigin,
   });
 
   return {
@@ -215,10 +226,13 @@ export const login = async (data: LoginInput) => {
       approvalStatus: user.approvalStatus,
       educationLevels: user.educationLevels,
       photoUrl: user.photoUrl ?? null,
+      schoolOrigin: (user as any).schoolOrigin ?? null,
+      phoneNumber: (user as any).phoneNumber ?? null,
     },
     token,
   };
 };
+
 
 export const logout = async (userId: string) => {
   const user = await prisma.user.findUnique({

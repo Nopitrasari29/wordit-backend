@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 export const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  name: z.string().min(2, "Nama minimal 2 karakter"),
+  email: z.string().email("Format email tidak valid"),
+  password: z.string().min(8, "Password minimal 8 karakter"),
   role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
   educationLevels: z.array(z.enum(["SD", "SMP", "SMA", "UNIVERSITY"])).optional(),
+  schoolOrigin: z.string().optional(),
+  phoneNumber: z.string().optional(),
 }).refine(
   (data) => {
     // Teacher WAJIB isi educationLevels
