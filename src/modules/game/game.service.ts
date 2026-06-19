@@ -422,10 +422,13 @@ export const finishGame = async (
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) throw new Error("Game tidak ditemukan");
 
-  // 🛠️ FIX SINKRONISASI UTAMA: Ambil nilai murni in-game siswa (300 XP / 520 XP) secara mutlak!
+  // 🛠️ FIX KRITIS: Normalisasi gameJson — game lama mungkin menyimpannya sebagai array
   let finalScore = payload.scoreValue !== undefined ? payload.scoreValue : 0;
-  let finalAccuracy = payload.accuracy !== undefined ? payload.accuracy : 0;
-  const content = game.gameJson as any;
+  let finalAccuracy = Math.min(100, Math.max(0, payload.accuracy !== undefined ? payload.accuracy : 0));
+  
+  // Normalisasi: jika gameJson tersimpan sebagai array (format lama), ambil elemen pertama
+  const rawContent = game.gameJson as any;
+  const content = Array.isArray(rawContent) ? (rawContent[0] ?? {}) : (rawContent ?? {});
 
   // 🎯 KALKULASI SKOR OTOMATIS: Cek konfigurasi maxScore dari guru di gameJson
   // Jika guru mengatur maxScore, gunakan pembagian proporsional per soal.
@@ -607,8 +610,11 @@ export const finishGame = async (
   }
 
   if (game.templateType !== TemplateType.ESSAY) {
-    if (payload.accuracy !== undefined) {
-      finalAccuracy = payload.accuracy;
+    // Hitung ulang akurasi dari data sebenarnya (bukan percaya payload frontend)
+    if (totalQuestions > 0) {
+      finalAccuracy = Math.round((correctAnswers / totalQuestions) * 100);
+    } else if (payload.accuracy !== undefined) {
+      finalAccuracy = Math.min(100, Math.max(0, payload.accuracy));
     }
   }
 
