@@ -52,7 +52,7 @@ bot.action(/approve_(.+)/, async (ctx) => {
         });
 
         // Ubah pesan di Telegram agar tombolnya hilang
-        await ctx.editMessageText(`✅ *Selesai!* Guru *${user.name}* telah disetujui.`, {
+        await ctx.editMessageText(`✅ *Selesai!* Guru *${user.name}* telah disetujui oleh *${ctx.from?.first_name || "Admin"}* via Telegram.`, {
             parse_mode: "Markdown"
         });
 
@@ -102,7 +102,7 @@ bot.action(/reject_(.+)/, async (ctx) => {
             userName: `Telegram: ${ctx.from?.first_name || "Admin"}`,
         });
 
-        await ctx.editMessageText(`❌ *Ditolak!* Pendaftaran *${user.name}* telah ditolak.`, {
+        await ctx.editMessageText(`❌ *Ditolak!* Pendaftaran *${user.name}* telah ditolak oleh *${ctx.from?.first_name || "Admin"}* via Telegram.`, {
             parse_mode: "Markdown"
         });
 
@@ -152,7 +152,7 @@ bot.action(/approve_sa_(.+)/, async (ctx) => {
         });
 
         // Ubah pesan di Telegram agar tombolnya hilang
-        await ctx.editMessageText(`✅ *Selesai!* Guru *${user.name}* telah disetujui sebagai Admin Sekolah.`, {
+        await ctx.editMessageText(`✅ *Selesai!* Guru *${user.name}* telah disetujui sebagai Admin Sekolah oleh *${ctx.from?.first_name || "Admin"}* via Telegram.`, {
             parse_mode: "Markdown"
         });
 
@@ -205,7 +205,7 @@ bot.action(/reject_sa_(.+)/, async (ctx) => {
             userName: `Telegram: ${ctx.from?.first_name || "Admin"}`,
         });
 
-        await ctx.editMessageText(`❌ *Ditolak!* Pengajuan Admin Sekolah dari *${user.name}* telah ditolak.`, {
+        await ctx.editMessageText(`❌ *Ditolak!* Pengajuan Admin Sekolah dari *${user.name}* telah ditolak oleh *${ctx.from?.first_name || "Admin"}* via Telegram.`, {
             parse_mode: "Markdown"
         });
 
@@ -287,7 +287,7 @@ export const sendApprovalRequestToTele = async (user: { id: string; name: string
 /**
  * Update pesan Telegram ketika guru di-approve atau di-reject melalui website.
  */
-export const updateTelegramMessageStatus = async (userId: string, action: "APPROVE" | "REJECT", userName: string) => {
+export const updateTelegramMessageStatus = async (userId: string, action: "APPROVE" | "REJECT", userName: string, adminName: string) => {
     if (!botToken || !adminId) return;
 
     try {
@@ -298,8 +298,8 @@ export const updateTelegramMessageStatus = async (userId: string, action: "APPRO
         }
 
         const statusText = action === "APPROVE"
-            ? `✅ *Selesai!* Guru *${userName}* telah disetujui via Website.`
-            : `❌ *Ditolak!* Pendaftaran *${userName}* telah ditolak via Website.`;
+            ? `✅ *Selesai!* Guru *${userName}* telah disetujui oleh *${adminName}* via Website.`
+            : `❌ *Ditolak!* Pendaftaran *${userName}* telah ditolak oleh *${adminName}* via Website.`;
 
         await bot.telegram.editMessageText(adminId, parseInt(messageId, 10), undefined, statusText, {
             parse_mode: "Markdown"
@@ -344,7 +344,7 @@ export const sendSchoolAdminRequestToTele = async (user: { id: string; name: str
 /**
  * Update pesan Telegram ketika pengajuan admin sekolah disetujui atau ditolak via website.
  */
-export const updateTelegramSchoolAdminMessageStatus = async (userId: string, action: "APPROVE" | "REJECT", userName: string) => {
+export const updateTelegramSchoolAdminMessageStatus = async (userId: string, action: "APPROVE" | "REJECT", teacherName: string, adminName: string) => {
     if (!botToken || !adminId) return;
 
     try {
@@ -355,8 +355,8 @@ export const updateTelegramSchoolAdminMessageStatus = async (userId: string, act
         }
 
         const statusText = action === "APPROVE"
-            ? `✅ *Selesai!* Pengajuan Admin Sekolah untuk *${userName}* telah disetujui via Website.`
-            : `❌ *Ditolak!* Pengajuan Admin Sekolah untuk *${userName}* telah ditolak via Website.`;
+            ? `✅ *Selesai!* Pengajuan Admin Sekolah untuk *${teacherName}* telah disetujui oleh *${adminName}* via Website.`
+            : `❌ *Ditolak!* Pengajuan Admin Sekolah untuk *${teacherName}* telah ditolak oleh *${adminName}* via Website.`;
 
         await bot.telegram.editMessageText(adminId, parseInt(messageId, 10), undefined, statusText, {
             parse_mode: "Markdown"
@@ -364,7 +364,7 @@ export const updateTelegramSchoolAdminMessageStatus = async (userId: string, act
 
         // Hapus dari Redis setelah berhasil
         await redis.del(`tele-sa-msg:${userId}`);
-        console.log(`✅ Pesan Telegram School Admin untuk ${userName} berhasil di-update dari Website.`);
+        console.log(`✅ Pesan Telegram School Admin untuk ${teacherName} berhasil di-update dari Website.`);
     } catch (error) {
         console.error(`⚠️ Gagal memperbarui pesan Telegram School Admin dari website untuk user ${userId}:`, error);
     }

@@ -23,6 +23,7 @@ router.get("/leaderboard", authMiddleware(), userController.getStudentLeaderboar
 // ============================================================
 // PATCH /api/users/request-school-admin
 router.patch("/request-school-admin", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), userController.requestSchoolAdmin);
+router.patch("/cancel-school-admin", authMiddleware(["SCHOOL_ADMIN"]), userController.cancelSchoolAdmin);
 
 // ============================================================
 // SUPER_ADMIN ONLY: Setujui/Tolak pengajuan Admin Sekolah

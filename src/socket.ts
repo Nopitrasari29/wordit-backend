@@ -46,6 +46,12 @@ export const initSocket = (httpServer: HttpServer) => {
       console.log(`🛡️ Admin socket [${socket.id}] joined room [admin]`);
     });
 
+    socket.on("join_user_room", (userId: string) => {
+      if (!userId) return;
+      socket.join(`user_${userId}`);
+      console.log(`👤 User socket [${socket.id}] joined room [user_${userId}]`);
+    });
+
     // 1. 👨‍🏫 HOST JOIN: Guru membuka ruangan proyektor
     socket.on("hostJoin", (code: string) => {
       const roomCode = code?.toUpperCase().trim();

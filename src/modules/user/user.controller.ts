@@ -302,3 +302,15 @@ export const approveSchoolAdmin = async (req: Request, res: Response) => {
     res.status(400).json(errorResponse(message));
   }
 };
+
+export const cancelSchoolAdmin = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json(errorResponse("Unauthorized")); return; }
+    const result = await userService.cancelSchoolAdmin(userId);
+    res.status(200).json(successResponse(result, "Status Admin Sekolah berhasil dibatalkan. Peran dikembalikan menjadi Teacher."));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal membatalkan status Admin Sekolah";
+    res.status(400).json(errorResponse(message));
+  }
+};

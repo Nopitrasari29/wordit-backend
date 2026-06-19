@@ -137,9 +137,18 @@ export const approveTeacher = async (
 
   try {
     const { updateTelegramMessageStatus } = await import("../../utils/telegram.service");
-    await updateTelegramMessageStatus(targetUserId, action, updated.name);
+    await updateTelegramMessageStatus(targetUserId, action, updated.name, admin?.name || "Admin");
   } catch (teleErr) {
     console.error("⚠️ Gagal memperbarui status ke Telegram:", teleErr);
+  }
+
+  // Real-time socket notify
+  try {
+    const { getIO } = await import("../../socket");
+    const io = getIO();
+    io.to("admin").emit("admin_refresh");
+  } catch (ioErr) {
+    console.warn("⚠️ Gagal emit socket admin_refresh:", ioErr);
   }
 
   return updated;
@@ -655,6 +664,27 @@ export const requestSchoolAdmin = async (userId: string) => {
     console.error("⚠️ Gagal mengirim notifikasi request school admin ke Telegram:", teleErr);
   }
 
+  // 🚀 Kirim notifikasi email ke Admin Official
+  try {
+    const { sendAdminRequestEmailToAdmin } = await import("../../utils/mailer");
+    await sendAdminRequestEmailToAdmin({
+      name: user.name,
+      email: user.email,
+      schoolOrigin: user.schoolOrigin,
+    });
+  } catch (emailErr) {
+    console.error("⚠️ Gagal mengirim email notifikasi pengajuan ke Super Admin:", emailErr);
+  }
+
+  // Real-time socket notify
+  try {
+    const { getIO } = await import("../../socket");
+    const io = getIO();
+    io.to("admin").emit("admin_refresh");
+  } catch (ioErr) {
+    console.warn("⚠️ Gagal emit socket admin_refresh:", ioErr);
+  }
+
   return updated;
 };
 
@@ -696,9 +726,65 @@ export const approveSchoolAdmin = async (
   // 🚀 Update status pesan di Telegram Bot secara otomatis
   try {
     const { updateTelegramSchoolAdminMessageStatus } = await import("../../utils/telegram.service");
-    await updateTelegramSchoolAdminMessageStatus(targetUserId, action, updated.name);
+    await updateTelegramSchoolAdminMessageStatus(targetUserId, action, updated.name, superAdmin?.name || "Super Admin");
   } catch (teleErr) {
     console.error("⚠️ Gagal memperbarui status request school admin ke Telegram:", teleErr);
+  }
+
+  // Real-time socket notify
+  try {
+    const { getIO } = await import("../../socket");
+    const io = getIO();
+    // Refresh admin list
+    io.to("admin").emit("admin_refresh");
+    // Send direct notify to the teacher!
+    io.to(`user_${targetUserId}`).emit("user_notification", {
+      type: "ADMIN_REQUEST_DECISION",
+      status: newAdminRequestStatus,
+      message: isApproved 
+        ? "Permohonan Admin Sekolah Anda telah disetujui! Silakan masuk kembali atau segarkan halaman." 
+        : "Permohonan Admin Sekolah Anda ditolak.",
+    });
+  } catch (ioErr) {
+    console.warn("⚠️ Gagal emit socket keputusan admin:", ioErr);
+  }
+
+  return updated;
+};
+
+// ============================================================
+// RBAC: CANCEL SCHOOL ADMIN (Self Demotion ke Teacher biasa)
+// ============================================================
+export const cancelSchoolAdmin = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User tidak ditemukan");
+  if (user.role !== Role.SCHOOL_ADMIN)
+    throw new Error("Hanya Admin Sekolah yang bisa mengajukan pembatalan status admin");
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      role: Role.TEACHER,
+      adminRequestStatus: null, // reset status request
+      hasAdminAccess: false,
+    },
+    select: { id: true, name: true, email: true, role: true, adminRequestStatus: true },
+  });
+
+  await createSystemLog({
+    action: "CANCEL_SCHOOL_ADMIN",
+    details: `Guru "${user.name}" membatalkan status Admin Sekolah dan kembali menjadi Teacher biasa`,
+    userId,
+    userName: user.name,
+  });
+
+  // Emit socket ke admin agar otomatis update list user
+  try {
+    const { getIO } = await import("../../socket");
+    const io = getIO();
+    io.to("admin").emit("admin_refresh");
+  } catch (ioErr) {
+    console.warn("⚠️ Gagal emit socket refresh admin room:", ioErr);
   }
 
   return updated;

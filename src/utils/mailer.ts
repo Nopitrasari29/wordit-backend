@@ -137,3 +137,50 @@ export const sendWelcomeEmail = async (toEmail: string, name: string, passwordRa
     console.log("==================================================\n");
   }
 };
+
+export const sendAdminRequestEmailToAdmin = async (teacher: { name: string; email: string; schoolOrigin: string | null }) => {
+  const mailOptions = {
+    from: env.smtpFrom,
+    to: "wordit.official@gmail.com",
+    subject: "Pengajuan Admin Sekolah Baru di WordIT 🚨",
+    html: `
+      <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+        <div style="text-align: center; margin-bottom: 15px;">
+          <img src="${env.frontendUrl}/4.svg" alt="WordIT Logo" style="height: 40px; object-fit: contain;" />
+        </div>
+        <h2 style="color: #4f46e5; text-align: center; margin-top: 0;">Pengajuan Admin Sekolah Baru</h2>
+        <p>Halo Administrator WordIT,</p>
+        <p>Ada pengajuan peran Admin Sekolah baru dari pengguna dengan rincian berikut:</p>
+        
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;">👨‍🏫 <strong>Nama:</strong> ${teacher.name}</p>
+          <p style="margin: 0 0 8px 0;">📧 <strong>Email:</strong> ${teacher.email}</p>
+          <p style="margin: 0;">🏫 <strong>Asal Sekolah:</strong> ${teacher.schoolOrigin || "N/A"}</p>
+        </div>
+
+        <p>Silakan masuk ke Dashboard Admin website WordIT atau periksa chat grup Telegram Admin Anda untuk memproses permohonan ini.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${env.frontendUrl}/admin/users" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 9999px; font-weight: bold; display: inline-block;">Tinjau Pengajuan</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #64748b; text-align: center;">Pesan otomatis dikirim oleh Sistem WordIT.</p>
+      </div>
+    `,
+  };
+
+  if (transporter) {
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`✉️ Admin request notification email sent successfully to wordit.official@gmail.com`);
+    } catch (err) {
+      console.error("❌ Gagal mengirim email notifikasi pengajuan ke Super Admin:", err);
+    }
+  } else {
+    console.log("\n==================================================");
+    console.log(`✉️ [FALLBACK] ADMIN REQUEST NOTIFICATION EMAIL NOT SENT`);
+    console.log(`To      : wordit.official@gmail.com`);
+    console.log(`Subject : ${mailOptions.subject}`);
+    console.log(`Teacher : ${teacher.name} (${teacher.email})`);
+    console.log("==================================================\n");
+  }
+};
