@@ -503,7 +503,7 @@ export const getAdminStats = async () => {
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     const [
-      totalUsers,
+      totalUsersRaw,
       totalStudents,
       totalTeachersApproved,
       totalTeachersPending,
@@ -518,7 +518,7 @@ export const getAdminStats = async () => {
       recentSessionsRaw,
       totalSchoolAdminPending,
     ] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({ where: { role: { in: [Role.STUDENT, Role.TEACHER] } } }),
       prisma.user.count({ where: { role: Role.STUDENT } }),
       prisma.user.count({ where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.APPROVED } }),
       prisma.user.count({ where: { role: Role.TEACHER, approvalStatus: ApprovalStatus.PENDING } }),
@@ -613,7 +613,7 @@ export const getAdminStats = async () => {
     });
 
     return {
-      totalUsers,
+      totalUsers: totalStudents + totalTeachersApproved + totalTeachersPending,
       totalStudents,
       teachers: { approved: totalTeachersApproved, pending: totalTeachersPending, rejected: totalTeachersRejected, total: totalTeachersApproved + totalTeachersPending + totalTeachersRejected },
       games: { published: totalGamesPublished, draft: totalGamesDraft, total: totalGamesPublished + totalGamesDraft },

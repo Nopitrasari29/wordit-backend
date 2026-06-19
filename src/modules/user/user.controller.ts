@@ -186,6 +186,9 @@ export const changeUserRole = async (req: Request, res: Response) => {
 
     const adminUserId = req.user?.userId;
     const result = await userService.changeUserRole(id, role as Role, hasAdminAccess, adminUserId);
+    if (req.app.get("io")) {
+      req.app.get("io").to("admin").emit("admin_refresh");
+    }
     res.status(200).json(successResponse(result, "Data user berhasil diperbarui"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal memperbarui data user";
@@ -198,6 +201,9 @@ export const deleteUser = async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
     const adminUserId = req.user?.userId;
     const result = await userService.deleteUser(id, adminUserId);
+    if (req.app.get("io")) {
+      req.app.get("io").to("admin").emit("admin_refresh");
+    }
     res.status(200).json(successResponse(result, "User deleted"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to delete user";
@@ -239,6 +245,9 @@ export const bulkDeleteUsers = async (req: Request, res: Response) => {
     }
 
     const result = await userService.bulkDeleteUsers(safeIds, adminUserId);
+    if (req.app.get("io")) {
+      req.app.get("io").to("admin").emit("admin_refresh");
+    }
     res.status(200).json(successResponse(result, `Hapus massal selesai: ${result.success} berhasil, ${result.failed} gagal`));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal memproses hapus massal";
@@ -261,6 +270,9 @@ export const bulkImportUsers = async (req: Request, res: Response) => {
     }
 
     const result = await userService.bulkImportUsers(users, adminUserId, requester);
+    if (req.app.get("io")) {
+      req.app.get("io").to("admin").emit("admin_refresh");
+    }
     res.status(200).json(successResponse(result, "Proses impor massal selesai"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal memproses impor massal";

@@ -87,6 +87,15 @@ export const register = async (data: RegisterInput) => {
     userName: user.name,
   });
 
+  // Real-time socket notify for registration stats update
+  try {
+    const io = getIO();
+    io.to("admin").emit("admin_refresh");
+    console.log(`📡 Socket emit: admin_refresh terkirim ke web Admin untuk registrasi ${user.name} (${user.role})`);
+  } catch (ioErr) {
+    console.warn("⚠️ Gagal emit socket admin_refresh on register:", ioErr);
+  }
+
   // =========================================================
   // 🚀 TRIGGER TELEGRAM BOT & WEB NOTIF (JIKA ROLE TEACHER)
   // =========================================================
@@ -297,6 +306,15 @@ export const ltiLogin = async (data: LtiLoginInput, ltiToken?: string) => {
       userId: user.id,
       userName: user.name,
     });
+
+    // Real-time socket notify for LTI registration stats update
+    try {
+      const io = getIO();
+      io.to("admin").emit("admin_refresh");
+      console.log(`📡 Socket emit: admin_refresh terkirim ke web Admin untuk LTI SSO registrasi ${user.name}`);
+    } catch (ioErr) {
+      console.warn("⚠️ Gagal emit socket admin_refresh on LTI register:", ioErr);
+    }
   }
 
   if (user.approvalStatus === ApprovalStatus.PENDING) {

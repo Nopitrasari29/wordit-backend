@@ -14,8 +14,8 @@ const port = env?.port ? parseInt(env.port) : 5000;
 const server = createServer(app);
 
 // 2. Tempelkan Socket.io ke HTTP Server
-// Fungsi initSocket yang kita buat tadi akan membungkus server ini.
-initSocket(server);
+const ioInstance = initSocket(server);
+app.set("io", ioInstance);
 
 // 3. Nyalakan Telegram Bot Approval System
 startTelegramBot();
