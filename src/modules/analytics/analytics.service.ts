@@ -7,7 +7,7 @@ import { Prisma, EducationLevel, Role, ApprovalStatus } from "@prisma/client";
 const computeBadges = (
   totalGamesPlayed: number,
   averageScore: number,
-  recentHistory: { score: number; timeSpent: number }[],
+  recentHistory: { score: number; timeSpent: number; accuracy: number; difficulty: string }[],
 ) => {
   const allBadges = [
     {
@@ -59,6 +59,27 @@ const computeBadges = (
       description: "Rata-rata akurasi di atas 70% dari minimal 3 kuis",
       isUnlocked: totalGamesPlayed >= 3 && averageScore >= 70,
     },
+    {
+      name: "Speedrun Demon",
+      icon: "⚡",
+      color: "bg-amber-100",
+      description: "Selesaikan kuis dalam < 20 detik dengan akurasi >= 90%",
+      isUnlocked: recentHistory.some((h) => h.timeSpent > 0 && h.timeSpent < 20 && h.accuracy >= 90),
+    },
+    {
+      name: "Unstoppable",
+      icon: "🔥",
+      color: "bg-orange-100",
+      description: "Raih akurasi 100% berturut-turut pada 3 kuis terakhir",
+      isUnlocked: recentHistory.length >= 3 && recentHistory.slice(0, 3).every((h) => h.accuracy === 100),
+    },
+    {
+      name: "Underdog Hero",
+      icon: "🧠",
+      color: "bg-indigo-200",
+      description: "Selesaikan kuis tingkat kesulitan HARD dengan akurasi 100%",
+      isUnlocked: recentHistory.some((h) => h.difficulty === "HARD" && h.accuracy === 100),
+    },
   ];
   return allBadges;
 };
@@ -88,6 +109,8 @@ export const getStudentAnalytics = async (userId: string) => {
   const recentForBadge = recentHistory.map((s) => ({
     score: s.result?.scoreValue || 0,
     timeSpent: s.result?.timeSpent || 0,
+    accuracy: s.result?.accuracy || 0,
+    difficulty: s.game?.difficulty || "MEDIUM",
   }));
 
   const badges = computeBadges(
