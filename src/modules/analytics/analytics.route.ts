@@ -17,8 +17,8 @@ router.get("/teacher/classes", authMiddleware(), getTeacherClasses);
 // 3. Endpoint Guru: Melihat statistik kelas per Game ID
 router.get("/game/:id", authMiddleware(), getGameAnalytics);
 
-// 3b. Endpoint Guru: Reset hasil ujian siswa untuk Remedial / Test Ulang
-router.delete("/remedial/:resultId", authMiddleware(["TEACHER"]), deleteResultForRemedialController);
+// 3b. Endpoint Guru/School Admin: Reset hasil ujian siswa untuk Remedial / Test Ulang
+router.delete("/remedial/:resultId", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), deleteResultForRemedialController);
 
 // 4. Endpoint Admin: Melihat statistik aplikasi dan log
 router.get("/admin/stats", authMiddleware(["SUPER_ADMIN"]), getAdminStats);

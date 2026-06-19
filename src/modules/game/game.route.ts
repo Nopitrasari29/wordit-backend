@@ -14,22 +14,22 @@ router.get("/code/:shareCode", gameController.getGameByCode);
 // Detail game by ID (Sekarang publik dengan optionalAuth)
 router.get("/:id", optionalAuth, gameController.getGameById);
 
-// ═══════════════ PROTECTED ROUTES (TEACHER ONLY) ═══════════════
-router.get("/user/my-games", authMiddleware(["TEACHER"]), gameController.getMyGames);
-router.post("/", authMiddleware(["TEACHER"]), gameController.createGame);
-router.patch("/:id", authMiddleware(["TEACHER"]), gameController.updateGame);
-router.delete("/:id", authMiddleware(["TEACHER"]), gameController.deleteGame);
-router.patch("/:id/publish", authMiddleware(["TEACHER"]), gameController.togglePublish);
+// ═══════════════ PROTECTED ROUTES (TEACHER & SCHOOL_ADMIN) ═══════════════
+router.get("/user/my-games", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameController.getMyGames);
+router.post("/", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameController.createGame);
+router.patch("/:id", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameController.updateGame);
+router.delete("/:id", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameController.deleteGame);
+router.patch("/:id/publish", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameController.togglePublish);
 
-// ═══════════════ GAME PLAYER ENGINE (STUDENT & TEACHER) ═══════════════
+// ═══════════════ GAME PLAYER ENGINE (STUDENT, TEACHER, SCHOOL_ADMIN & SUPER_ADMIN) ═══════════════
 
 // 3. Play Game: Memulai sesi permainan (membuat GameSession)
-router.post("/:id/play", authMiddleware(["STUDENT", "TEACHER"]), gameController.playGame);
+router.post("/:id/play", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.playGame);
 
 // 4. Submit Answer: Update ranking real-time via Redis+Socket SAJA (tidak simpan ke DB)
-router.post("/:id/submit", authMiddleware(["STUDENT", "TEACHER"]), gameController.submitAnswer);
+router.post("/:id/submit", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.submitAnswer);
 
 // 5. Finish Game: Simpan SKOR FINAL ke PostgreSQL (dipanggil 1x di akhir game)
-router.post("/:id/finish", authMiddleware(["STUDENT", "TEACHER"]), gameController.finishGame);
+router.post("/:id/finish", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.finishGame);
 
 export default router;

@@ -457,6 +457,7 @@ export const getAdminStats = async () => {
       topTeachersRaw,
       levelDistRaw,
       recentSessionsRaw,
+      totalSchoolAdminPending,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: Role.STUDENT } }),
@@ -503,6 +504,7 @@ export const getAdminStats = async () => {
         where: { isCompleted: true, finishedAt: { gte: sevenDaysAgo, lte: today } },
         select: { finishedAt: true },
       }),
+      prisma.user.count({ where: { adminRequestStatus: ApprovalStatus.PENDING } }),
     ]);
 
     const topGames = topGamesRaw.map((g) => ({
@@ -562,6 +564,7 @@ export const getAdminStats = async () => {
       topTeachers,
       levelDistribution,
       last7DaysSessions,
+      schoolAdminRequests: { pending: totalSchoolAdminPending },
     };
   } catch (e: any) {
     console.error("⚠️ [AdminStats] Error:", e.message);
@@ -569,7 +572,8 @@ export const getAdminStats = async () => {
       totalUsers: 0, totalStudents: 0,
       teachers: { approved: 0, pending: 0, rejected: 0, total: 0 },
       games: { published: 0, draft: 0, total: 0 },
-      totalSessions: 0, topGames: [], templateDistribution: [], topTeachers: [], levelDistribution: [], last7DaysSessions: []
+      totalSessions: 0, topGames: [], templateDistribution: [], topTeachers: [], levelDistribution: [], last7DaysSessions: [],
+      schoolAdminRequests: { pending: 0 }
     };
   }
 };

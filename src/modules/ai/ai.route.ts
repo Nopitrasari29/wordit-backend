@@ -19,18 +19,18 @@ const router = Router();
  */
 router.post(
   "/generate-quiz",
-  authMiddleware(["TEACHER", "ADMIN"]),
+  authMiddleware(["TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]),
   validate(generateQuizSchema), // ✅ PASANG DISINI (GAP 3 FIXED)
   aiController.generateQuiz,
 );
 
 /**
  * 📖 GET FEEDBACK
- * Bisa diakses oleh semua pengguna yang sudah login (STUDENT, TEACHER, ADMIN).
+ * Bisa diakses oleh semua pengguna yang sudah login (STUDENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN).
  */
 router.post(
   "/get-feedback",
-  authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+  authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]),
   aiController.getAIFeedback,
 );
 
@@ -40,17 +40,17 @@ router.post(
  */
 router.post(
   "/grade",
-  authMiddleware(["STUDENT", "TEACHER", "ADMIN"]),
+  authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]),
   aiController.gradeEssayAnswer,
 );
 
 /**
  * 📊 AI QUOTA MONITORING (AI-09)
- * Hanya bisa diakses oleh ADMIN untuk memantau penggunaan API harian.
+ * Hanya bisa diakses oleh SUPER_ADMIN dan SCHOOL_ADMIN untuk memantau penggunaan API harian.
  */
 router.get(
   "/quota-status",
-  authMiddleware(["ADMIN"]),
+  authMiddleware(["SUPER_ADMIN", "SCHOOL_ADMIN"]),
   aiController.getQuotaStatus,
 );
 

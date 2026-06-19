@@ -642,6 +642,19 @@ export const requestSchoolAdmin = async (userId: string) => {
     userName: user.name,
   });
 
+  // 🚀 Kirim notifikasi pengajuan ke Telegram Bot
+  try {
+    const { sendSchoolAdminRequestToTele } = await import("../../utils/telegram.service");
+    await sendSchoolAdminRequestToTele({
+      id: updated.id,
+      name: user.name,
+      email: user.email,
+      schoolOrigin: user.schoolOrigin,
+    });
+  } catch (teleErr) {
+    console.error("⚠️ Gagal mengirim notifikasi request school admin ke Telegram:", teleErr);
+  }
+
   return updated;
 };
 
@@ -679,6 +692,14 @@ export const approveSchoolAdmin = async (
     userId: superAdminId,
     userName: superAdmin?.name || "Super Admin",
   });
+
+  // 🚀 Update status pesan di Telegram Bot secara otomatis
+  try {
+    const { updateTelegramSchoolAdminMessageStatus } = await import("../../utils/telegram.service");
+    await updateTelegramSchoolAdminMessageStatus(targetUserId, action, updated.name);
+  } catch (teleErr) {
+    console.error("⚠️ Gagal memperbarui status request school admin ke Telegram:", teleErr);
+  }
 
   return updated;
 };
