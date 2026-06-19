@@ -450,35 +450,41 @@ export const finishGame = async (
   // Verifikasi status isCorrect secara aman di backend untuk non-essay
   if (game.templateType !== TemplateType.ESSAY) {
     tempMappedAnswers = deDuplicatedAnswers.map((ans: any) => {
-      let isAnsCorrect = false;
-      switch (game.templateType) {
-        case TemplateType.MULTIPLE_CHOICE:
-          isAnsCorrect = MultipleChoiceService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.TRUE_FALSE:
-          isAnsCorrect = TrueFalseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.MATCHING:
-          isAnsCorrect = MatchingService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.ANAGRAM:
-          isAnsCorrect = AnagramService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.HANGMAN:
-          isAnsCorrect = HangmanService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.WORD_SEARCH:
-          isAnsCorrect = WordSearchService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.FLASHCARD:
-          isAnsCorrect = FlashcardService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.MAZE_CHASE:
-          isAnsCorrect = MazeChaseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
-        case TemplateType.SPIN_THE_WHEEL:
-          isAnsCorrect = SpinTheWheelService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
-          break;
+      let isAnsCorrect = ans.isCorrect === true; // Default ke evaluasi frontend
+      if (ans.questionIndex !== undefined && ans.selectedAnswer !== undefined && ans.selectedAnswer !== null) {
+        try {
+          switch (game.templateType) {
+            case TemplateType.MULTIPLE_CHOICE:
+              isAnsCorrect = MultipleChoiceService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.TRUE_FALSE:
+              isAnsCorrect = TrueFalseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.MATCHING:
+              isAnsCorrect = MatchingService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.ANAGRAM:
+              isAnsCorrect = AnagramService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.HANGMAN:
+              isAnsCorrect = HangmanService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.WORD_SEARCH:
+              isAnsCorrect = WordSearchService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.FLASHCARD:
+              isAnsCorrect = FlashcardService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.MAZE_CHASE:
+              isAnsCorrect = MazeChaseService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+            case TemplateType.SPIN_THE_WHEEL:
+              isAnsCorrect = SpinTheWheelService.verifyAnswer(content, ans.questionIndex, ans.selectedAnswer);
+              break;
+          }
+        } catch (e) {
+          console.warn("Gagal verifikasi ulang jawaban, menggunakan fallback frontend isCorrect:", e);
+        }
       }
       return { ...ans, isCorrect: isAnsCorrect };
     });
@@ -885,6 +891,13 @@ export const saveLeaderboard = async (
             where: { id: existingSession.id },
             data: { userId: player.userId }
           });
+        }
+
+        // PENTING: Jika sesi ini sudah diselesaikan secara resmi oleh siswa melalui API finishGame,
+        // jangan menimpa nilai & akurasinya dengan data transien dari WebSocket/Lobby.
+        if (existingSession.isCompleted) {
+          console.log(`⏩ [saveLeaderboard] Skipping Result upsert for completed session: ${player.name}`);
+          continue;
         }
 
         // Ambil nilai yang sudah ada dari database jika ada untuk dibandingkan

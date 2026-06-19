@@ -171,6 +171,7 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
       accuracy: true,
       answersDetail: true,
       timeSpent: true,
+      completedAt: true,
     },
   });
 
@@ -184,10 +185,27 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
     sessions.map((session) => [session.id, session.playerName || "TANPA_NAMA"]),
   );
 
+  // Filter results to keep only the latest session per student (case-insensitive name)
+  const seenStudents = new Set<string>();
+  const filteredResults = [];
+  
+  // Sort results by completedAt descending (latest first) to ensure we get the latest attempt
+  const sortedResults = [...results].sort((a, b) => {
+    return new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime();
+  });
+
+  for (const r of sortedResults) {
+    const studentName = (sessionNameMap[r.sessionId] || "Anonymous").toLowerCase().trim();
+    if (!seenStudents.has(studentName)) {
+      seenStudents.add(studentName);
+      filteredResults.push(r);
+    }
+  }
+
   const groupStats: Record<string, { totalScore: number; totalAccuracy: number; count: number }> = {};
   const questionMistakes: Record<number, number> = {};
 
-  results.forEach((res) => {
+  filteredResults.forEach((res) => {
     const currentName = sessionNameMap[res.sessionId] || "TANPA_NAMA";
     const match = currentName.match(/^([^_]+)_/);
     const className = match?.[1]?.toUpperCase() || "TANPA_KELAS";
@@ -235,7 +253,7 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
     })
     .sort((a, b) => b.mistakeCount - a.mistakeCount);
 
-  const allStudentsData = results.map((r) => {
+  const allStudentsData = filteredResults.map((r) => {
     const currentName = sessionNameMap[r.sessionId] || "Anonymous";
     const match = currentName.match(/^([^_]+)_/);
     return {
@@ -254,8 +272,8 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
   return {
     gameTitle: game.title,
     summary: {
-      totalParticipants: results.length,
-      averageAccuracy: results.length > 0 ? Math.round(results.reduce((acc, r) => acc + r.accuracy, 0) / results.length) : 0,
+      totalParticipants: filteredResults.length,
+      averageAccuracy: filteredResults.length > 0 ? Math.round(filteredResults.reduce((acc, r) => acc + r.accuracy, 0) / filteredResults.length) : 0,
     },
     classDistribution,
     difficultQuestions: difficultQuestions.slice(0, 5),
@@ -313,10 +331,28 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
     return groupName ? groupName.toUpperCase() : "UMUM";
   };
 
+  // Filter results to keep only the latest session per student (case-insensitive name) per game
+  const seenStudents = new Set<string>();
+  const filteredResults = [];
+  
+  // Sort results by completedAt descending (latest first) to ensure we get the latest attempt
+  const sortedResults = [...results].sort((a, b) => {
+    return new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime();
+  });
+
+  for (const r of sortedResults) {
+    const studentName = (r.session.playerName || "Anonymous").toLowerCase().trim();
+    const studentKey = `${r.session.gameId}_${studentName}`;
+    if (!seenStudents.has(studentKey)) {
+      seenStudents.add(studentKey);
+      filteredResults.push(r);
+    }
+  }
+
   const groupMap: Record<string, { totalScore: number; totalAccuracy: number; count: number; studentIdentifiers: Set<string> }> = {};
   const questionMistakes: Record<string, { count: number; text: string }> = {};
 
-  results.forEach((r) => {
+  filteredResults.forEach((r) => {
     const pName = r.session.playerName || "UMUM_PLAYER";
     const group = extractGroup(pName);
     
@@ -370,7 +406,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
     icon: "🏫",
   }));
 
-  const atRiskStudents = results
+  const atRiskStudents = filteredResults
     .filter((r) => (r.accuracy ?? 0) < 70) 
     .map((r) => {
       const currentName = r.session.playerName || "Anonymous";
@@ -385,7 +421,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
     })
     .slice(0, 10);
 
-  const allStudentsData = results.map((r) => {
+  const allStudentsData = filteredResults.map((r) => {
     const currentName = r.session.playerName || "Anonymous";
     return {
       id: r.id,
