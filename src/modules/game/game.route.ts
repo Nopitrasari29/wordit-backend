@@ -27,7 +27,7 @@ router.patch("/:id/publish", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), gameCo
 router.post("/:id/play", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.playGame);
 
 // 4. Submit Answer: Update ranking real-time via Redis+Socket SAJA (tidak simpan ke DB)
-router.post("/:id/submit", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.submitAnswer);
+router.post("/:id/submit", optionalAuth, gameController.submitAnswer);
 
 // 5. Finish Game: Simpan SKOR FINAL ke PostgreSQL (dipanggil 1x di akhir game)
 router.post("/:id/finish", authMiddleware(["STUDENT", "TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]), gameController.finishGame);

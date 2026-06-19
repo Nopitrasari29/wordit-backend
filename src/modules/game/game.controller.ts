@@ -206,11 +206,6 @@ export const playGame = async (req: Request, res: Response, next: NextFunction) 
 export const submitAnswer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = getUserId(req);
-    if (!userId) {
-      res.status(401).json(errorResponse("Unauthorized"));
-      return;
-    }
-
     const id = req.params.id as string;
     const parsed = submitAnswerSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -220,20 +215,22 @@ export const submitAnswer = async (req: Request, res: Response, next: NextFuncti
 
     const { questionIndex, selectedAnswer, earnedPoints } = parsed.data;
     
-    // 🛠️ FIX REVISI 1: Ambil playerName asli siswa dari database session aktif
-    const activeSession = await prisma.gameSession.findFirst({
-      where: { gameId: id, userId: userId as string, isCompleted: false },
-      select: { playerName: true }
-    });
-    
-    const currentStudentName = activeSession?.playerName || "Guest Player";
+    // 🛠️ FIX REVISI 1: Ambil playerName asli siswa dari database session aktif jika login
+    let currentStudentName = "Guest Player";
+    if (userId) {
+      const activeSession = await prisma.gameSession.findFirst({
+        where: { gameId: id, userId: userId, isCompleted: false },
+        select: { playerName: true }
+      });
+      if (activeSession) currentStudentName = activeSession.playerName;
+    }
 
     const result = await gameService.submitAnswer(
       id, 
-      userId as string, 
+      userId || "GUEST", 
       questionIndex as number, 
       selectedAnswer,
-      currentStudentName, // 🛠️ KIRIM NAMA ASLI SISWA (bukan undefined lagi)
+      currentStudentName, 
       earnedPoints
     );
 

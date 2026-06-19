@@ -1,5 +1,5 @@
 import { prisma } from "../../config/database";
-import { Prisma, EducationLevel, TemplateType } from "@prisma/client";
+import { Prisma, EducationLevel, TemplateType, Role } from "@prisma/client";
 import type {
   CreateGameInput,
   UpdateGameInput,
@@ -301,10 +301,20 @@ export const startGame = async (gameId: string, userId: string, playerName?: str
     },
   });
 
-  await prisma.game.update({
-    where: { id: gameId },
-    data: { playCount: { increment: 1 } },
+  // Cek role user untuk menghindari playCount naik saat guru/admin melakukan preview
+  const playerUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
   });
+
+  const isStudent = playerUser ? playerUser.role === Role.STUDENT : true;
+
+  if (isStudent) {
+    await prisma.game.update({
+      where: { id: gameId },
+      data: { playCount: { increment: 1 } },
+    });
+  }
 
   return { ...session, recommendedDifficulty };
 };
@@ -328,37 +338,39 @@ export const submitAnswer = async (
   if (!game) throw new Error("Game tidak ditemukan");
 
   let isCorrect = false;
+  const rawContent = game.gameJson as any;
+  const normalizedJson = Array.isArray(rawContent) ? (rawContent[0] ?? {}) : (rawContent ?? {});
 
   switch (game.templateType) {
     case TemplateType.ANAGRAM:
-      isCorrect = AnagramService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = AnagramService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.FLASHCARD:
-      isCorrect = FlashcardService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = FlashcardService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.HANGMAN:
-      isCorrect = HangmanService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = HangmanService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.WORD_SEARCH:
-      isCorrect = WordSearchService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = WordSearchService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.MAZE_CHASE:
-      isCorrect = MazeChaseService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = MazeChaseService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.SPIN_THE_WHEEL:
-      isCorrect = SpinTheWheelService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = SpinTheWheelService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.MULTIPLE_CHOICE:
-      isCorrect = MultipleChoiceService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = MultipleChoiceService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.TRUE_FALSE:
-      isCorrect = TrueFalseService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = TrueFalseService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.MATCHING:
-      isCorrect = MatchingService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = MatchingService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     case TemplateType.ESSAY:
-      isCorrect = EssayService.verifyAnswer(game.gameJson, questionIndex, selectedAnswer);
+      isCorrect = EssayService.verifyAnswer(normalizedJson, questionIndex, selectedAnswer);
       break;
     default:
       isCorrect = false;
@@ -843,11 +855,7 @@ export const saveLeaderboard = async (
     }
     const dynamicMaxScore = totalQuestions * 100 || 100;
 
-    // 1. Tutup semua sesi aktif untuk kuis ini
-    await prisma.gameSession.updateMany({
-      where: { gameId: game.id, isCompleted: false },
-      data: { isCompleted: true, finishedAt: new Date() },
-    });
+    // PENTING: updateMany dipindahkan ke bagian akhir loop iterasi finalPlayers
 
     // 2. Simpan skor pemain guest/simulator/siswa ke dalam database
     for (const player of finalPlayers) {
@@ -938,6 +946,12 @@ export const saveLeaderboard = async (
         console.log(`💾 Synced player score for existing session: ${player.name} (${newScore} pts, sessionId: ${existingSession.id})`);
       }
     }
+
+    // 3. Tutup semua sesi aktif untuk kuis ini setelah semua nilai disimpan
+    await prisma.gameSession.updateMany({
+      where: { gameId: game.id, isCompleted: false },
+      data: { isCompleted: true, finishedAt: new Date() },
+    });
 
     console.log(`✅ Sesi game ${roomCode} berhasil ditutup dan data leaderboard disimpan.`);
   } catch (error) {

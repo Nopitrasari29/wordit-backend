@@ -459,12 +459,12 @@ export const getAdaptiveDifficulty = async (userId: string): Promise<"EASY" | "M
     where: { session: { userId } },
     orderBy: { completedAt: "desc" },
     take: 3,
-    select: { scoreValue: true },
+    select: { accuracy: true },
   });
   if (lastResults.length < 3) return "MEDIUM";
-  const avgScore = lastResults.reduce((acc, res) => acc + res.scoreValue, 0) / 3;
-  if (avgScore > 85) return "HARD";
-  if (avgScore > 60) return "MEDIUM";
+  const avgAccuracy = lastResults.reduce((acc, res) => acc + res.accuracy, 0) / 3;
+  if (avgAccuracy > 85) return "HARD";
+  if (avgAccuracy > 60) return "MEDIUM";
   return "EASY";
 };
 
