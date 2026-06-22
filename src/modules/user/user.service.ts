@@ -664,16 +664,18 @@ export const requestSchoolAdmin = async (userId: string) => {
     console.error("⚠️ Gagal mengirim notifikasi request school admin ke Telegram:", teleErr);
   }
 
-  // 🚀 Kirim notifikasi email ke Admin Official
+  // 🚀 Kirim notifikasi email ke Admin Official (non-blocking)
   try {
     const { sendAdminRequestEmailToAdmin } = await import("../../utils/mailer");
-    await sendAdminRequestEmailToAdmin({
+    sendAdminRequestEmailToAdmin({
       name: user.name,
       email: user.email,
       schoolOrigin: user.schoolOrigin,
+    }).catch((emailErr) => {
+      console.error("⚠️ Gagal mengirim email notifikasi pengajuan ke Super Admin:", emailErr);
     });
-  } catch (emailErr) {
-    console.error("⚠️ Gagal mengirim email notifikasi pengajuan ke Super Admin:", emailErr);
+  } catch (err) {
+    console.error("⚠️ Gagal memuat/mengirim email notifikasi:", err);
   }
 
   // Real-time socket notify

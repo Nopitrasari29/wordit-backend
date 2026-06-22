@@ -76,9 +76,11 @@ export const register = async (data: RegisterInput) => {
   // =========================================================
   // 📝 SYSTEM LOG REGISTER
   // =========================================================
-  // Kirim email verifikasi
+  // Kirim email verifikasi (non-blocking agar registrasi tidak terhambat jika SMTP server bermasalah)
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-  await sendVerificationEmail(user.email, verificationLink);
+  sendVerificationEmail(user.email, verificationLink).catch((err) => {
+    console.error("⚠️ Gagal mengirim email verifikasi:", err);
+  });
 
   await createSystemLog({
     action: "REGISTER",
@@ -365,12 +367,14 @@ export const requestPasswordReset = async (email: string) => {
   const { redis } = await import("../../config/redis");
   await redis.set(`forgot-token:${token}`, email, "EX", 3600);
 
-  // Send reset email
+  // Send reset email (non-blocking)
   const { env } = await import("../../config/env");
   const { sendResetPasswordEmail } = await import("../../utils/mailer");
   const resetLink = `${env.frontendUrl}/reset-password?token=${token}`;
 
-  await sendResetPasswordEmail(email, resetLink);
+  sendResetPasswordEmail(email, resetLink).catch((err) => {
+    console.error("⚠️ Gagal mengirim email reset password:", err);
+  });
 
   await createSystemLog({
     action: "REQUEST_RESET_PASSWORD",
