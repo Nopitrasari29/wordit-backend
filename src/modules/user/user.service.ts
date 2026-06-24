@@ -493,15 +493,19 @@ export const bulkDeleteUsers = async (userIds: string[], adminUserId?: string) =
 // ============================================================
 // 8. GET STUDENT LEADERBOARD (Top 10 Students by XP/totalPoints)
 // ============================================================
-export const getStudentLeaderboard = async () => {
+export const getStudentLeaderboard = async (schoolOrigin?: string) => {
   return await prisma.user.findMany({
     where: {
       role: Role.STUDENT,
+      ...(schoolOrigin && {
+        schoolOrigin: { equals: schoolOrigin, mode: "insensitive" },
+      }),
     },
     select: {
       id: true,
       name: true,
       photoUrl: true,
+      schoolOrigin: true,
       profile: {
         select: {
           totalPoints: true,

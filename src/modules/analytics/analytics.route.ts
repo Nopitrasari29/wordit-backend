@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getMyAnalytics, getGameAnalytics, getTeacherClasses, getAdminStats, getAdminLogs, deleteResultForRemedialController } from "./analytics.controller";
+import { getMyAnalytics, getGameAnalytics, getTeacherClasses, getAdminStats, getAdminLogs, deleteResultForRemedialController, updateEssayScoreController } from "./analytics.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
 
 const router = Router();
@@ -19,6 +19,9 @@ router.get("/game/:id", authMiddleware(), getGameAnalytics);
 
 // 3b. Endpoint Guru/School Admin: Reset hasil ujian siswa untuk Remedial / Test Ulang
 router.delete("/remedial/:resultId", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), deleteResultForRemedialController);
+
+// 3c. Endpoint Guru/School Admin: Koreksi nilai essay AI secara manual
+router.patch("/results/:resultId/score", authMiddleware(["TEACHER", "SCHOOL_ADMIN"]), updateEssayScoreController);
 
 // 4. Endpoint Admin: Melihat statistik aplikasi dan log
 router.get("/admin/stats", authMiddleware(["SUPER_ADMIN"]), getAdminStats);

@@ -185,7 +185,18 @@ export const changeUserRole = async (req: Request, res: Response) => {
     }
 
     const adminUserId = req.user?.userId;
-    const result = await userService.changeUserRole(id, role as Role, hasAdminAccess, adminUserId);
+    let targetUserId = id;
+
+    if (id.includes("@")) {
+      const targetUser = await prisma.user.findUnique({ where: { email: id } });
+      if (!targetUser) {
+        res.status(404).json(errorResponse("Pengguna dengan email tersebut tidak ditemukan"));
+        return;
+      }
+      targetUserId = targetUser.id;
+    }
+
+    const result = await userService.changeUserRole(targetUserId, role as Role, hasAdminAccess, adminUserId);
     if (req.app.get("io")) {
       req.app.get("io").to("admin").emit("admin_refresh");
     }
@@ -216,11 +227,12 @@ export const deleteUser = async (req: Request, res: Response) => {
 // ============================================================
 export const getStudentLeaderboard = async (req: Request, res: Response) => {
   try {
-    const leaderboard = await userService.getStudentLeaderboard();
+    const { schoolOrigin } = req.query;
+    const leaderboard = await userService.getStudentLeaderboard(schoolOrigin as string);
     res.status(200).json(successResponse(leaderboard, "Student leaderboard fetched"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to get student leaderboard";
-    res.status(400).json(errorResponse(message));
+    res.status(500).json(errorResponse(message));
   }
 };
 

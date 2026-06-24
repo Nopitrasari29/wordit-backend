@@ -74,6 +74,8 @@ export const gameQuerySchema = z.object({
   educationLevel: EducationLevelEnum.optional(),
   templateType: TemplateTypeEnum.optional(),
   search: z.string().optional(),
+  classGrade: z.string().optional(),
+  subject: z.string().optional(),
   page: z.string().default("1"),
   limit: z.string().default("10"),
 });

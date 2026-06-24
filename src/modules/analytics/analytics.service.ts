@@ -1,5 +1,6 @@
 import { prisma } from "../../config/database";
 import { Prisma, EducationLevel, Role, ApprovalStatus } from "@prisma/client";
+import { redis } from "../../config/redis";
 
 // =====================================================================
 // 🏅 BADGE COMPUTATION (FE-19 Gamification)
@@ -179,7 +180,7 @@ export const getStudentAnalytics = async (userId: string) => {
 export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: string) => {
   const game = await prisma.game.findUnique({
     where: { id: gameId },
-    select: { id: true, title: true, creatorId: true, gameJson: true },
+    select: { id: true, title: true, creatorId: true, gameJson: true, templateType: true },
   });
 
   if (!game || game.creatorId !== creatorId) {
@@ -189,6 +190,7 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
   const results = await prisma.result.findMany({
     where: { session: { gameId } },
     select: {
+      id: true,
       sessionId: true,
       scoreValue: true,
       accuracy: true,
@@ -280,13 +282,15 @@ export const getGameAnalyticsForTeacher = async (gameId: string, creatorId: stri
     const currentName = sessionNameMap[r.sessionId] || "Anonymous";
     const match = currentName.match(/^([^_]+)_/);
     return {
-      id: r.sessionId,
+      id: r.id,
       name: currentName,
       className: match?.[1]?.toUpperCase() || "TANPA_KELAS",
       gameName: game.title,
       score: r.scoreValue,
       accuracy: r.accuracy ?? 0,
       timeSpent: r.timeSpent ?? 0,
+      templateType: game.templateType,
+      answersDetail: r.answersDetail,
     };
   });
 
@@ -337,7 +341,7 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
           playerName: true, 
           userId: true,     
           gameId: true,
-          game: { select: { title: true } },
+          game: { select: { title: true, templateType: true } },
         },
       },
     },
@@ -454,6 +458,8 @@ export const getTeacherClassesAnalytics = async (teacherId: string, educationLev
       score: r.scoreValue,
       accuracy: r.accuracy ?? 0,
       timeSpent: r.timeSpent ?? 0,
+      templateType: r.session.game.templateType,
+      answersDetail: r.answersDetail,
     };
   });
 
@@ -702,4 +708,93 @@ export const deleteResultForRemedial = async (resultId: string, teacherId: strin
     console.error("Gagal mencatat log remedial:", logErr);
   }
   return { success: true };
+};
+
+// =====================================================================
+// ✏️ OVERRIDE / CORRECT ESSAY SCORE (TEACHER ACTION)
+// =====================================================================
+export const updateEssayScore = async (
+  resultId: string,
+  teacherId: string,
+  payload: { questionIndex: number; newScore: number; justification?: string }
+) => {
+  const result = await prisma.result.findUnique({
+    where: { id: resultId },
+    include: { session: { include: { game: true, user: { select: { name: true } } } } }
+  });
+  if (!result) throw new Error("Data hasil tidak ditemukan");
+  if (result.session.game.creatorId !== teacherId) throw new Error("Unauthorized: Kuis ini bukan buatan Anda");
+  if (result.session.game.templateType !== "ESSAY") throw new Error("Hanya kuis bertipe ESSAY yang dapat dikoreksi nilainya secara manual");
+
+  const answersDetail = (result.answersDetail as any[]) || [];
+  const aiGradingResult = (result.aiGradingResult as any[]) || [];
+
+  // Update specific questionIndex
+  const ansIdx = answersDetail.findIndex((a) => a.questionIndex === payload.questionIndex);
+  if (ansIdx === -1) throw new Error("Indeks pertanyaan tidak ditemukan pada detail hasil");
+
+  const oldScore = answersDetail[ansIdx].pointsEarned || 0;
+  answersDetail[ansIdx].pointsEarned = payload.newScore;
+  answersDetail[ansIdx].isCorrect = payload.newScore >= 60;
+  if (payload.justification) {
+    answersDetail[ansIdx].justification = `[DIKOREKSI GURU]: ${payload.justification} (AI Sebelumnya: ${answersDetail[ansIdx].justification || 'Tidak ada'})`;
+  } else {
+    answersDetail[ansIdx].justification = `[DIKOREKSI GURU] (AI Sebelumnya: ${answersDetail[ansIdx].justification || 'Tidak ada'})`;
+  }
+
+  // Update aiGradingResult too for consistency
+  const aiGradIdx = aiGradingResult.findIndex((a) => a.questionIndex === payload.questionIndex);
+  if (aiGradIdx !== -1) {
+    aiGradingResult[aiGradIdx].score = payload.newScore;
+    if (payload.justification) {
+      aiGradingResult[aiGradIdx].justification = `[DIKOREKSI GURU]: ${payload.justification} (AI Sebelumnya: ${aiGradingResult[aiGradIdx].justification || 'Tidak ada'})`;
+    } else {
+      aiGradingResult[aiGradIdx].justification = `[DIKOREKSI GURU] (AI Sebelumnya: ${aiGradingResult[aiGradIdx].justification || 'Tidak ada'})`;
+    }
+  }
+
+  // Recalculate total score and average accuracy
+  let totalScore = 0;
+  answersDetail.forEach((ans) => {
+    totalScore += ans.pointsEarned || 0;
+  });
+  const totalQuestions = answersDetail.length;
+  const newAccuracy = totalQuestions > 0 ? Math.round(totalScore / totalQuestions) : 0;
+
+  // Update in DB
+  const updatedResult = await prisma.result.update({
+    where: { id: resultId },
+    data: {
+      scoreValue: Math.round(totalScore),
+      accuracy: newAccuracy,
+      answersDetail: answersDetail as Prisma.InputJsonValue,
+      aiGradingResult: aiGradingResult as Prisma.InputJsonValue,
+    },
+  });
+
+  // Update Redis Leaderboard for real-time consistency
+  try {
+    const redisKey = `leaderboard:${result.session.gameId}`;
+    const identity = result.session.playerName || result.session.userId || "Student";
+    await redis.zadd(redisKey, Math.round(totalScore), identity);
+  } catch (redisErr) {
+    console.error("Gagal mengupdate leaderboard Redis:", redisErr);
+  }
+
+  // Create system log
+  try {
+    const { createSystemLog } = require("../../utils/system-logger");
+    const user = await prisma.user.findUnique({ where: { id: teacherId } });
+    const studentDisplayName = result.session.user?.name || result.session.playerName || "Anonymous Student";
+    await createSystemLog({
+      action: "TEACHER_OVERRIDE_ESSAY_SCORE",
+      details: `Guru "${user?.name || 'Unknown'}" (Email: ${user?.email}) mengoreksi nilai essay siswa "${studentDisplayName}" untuk Pertanyaan #${payload.questionIndex + 1} dari ${oldScore} menjadi ${payload.newScore}.`,
+      userId: teacherId,
+      userName: user?.name || "Unknown",
+    });
+  } catch (logErr) {
+    console.error("Gagal mencatat log system:", logErr);
+  }
+
+  return updatedResult;
 };

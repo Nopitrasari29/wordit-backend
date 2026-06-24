@@ -42,6 +42,12 @@ export const getGames = async (query: GameQueryInput) => {
     ...(query.templateType && {
       templateType: query.templateType as TemplateType,
     }),
+    ...(query.classGrade && {
+      classGrade: { contains: query.classGrade, mode: "insensitive" },
+    }),
+    ...(query.subject && {
+      subject: { contains: query.subject, mode: "insensitive" },
+    }),
     ...(query.search && {
       title: { contains: query.search, mode: "insensitive" },
     }),
@@ -60,6 +66,8 @@ export const getGames = async (query: GameQueryInput) => {
         playCount: true,
         thumbnailUrl: true,
         shareCode: true,
+        classGrade: true,
+        subject: true,
         createdAt: true,
         creator: { select: { id: true, name: true } },
       },
