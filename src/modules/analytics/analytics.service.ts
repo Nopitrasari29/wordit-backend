@@ -669,6 +669,7 @@ export const getAdminLogs = async (params: { page?: number; limit?: number; acti
       { action: { contains: params.search, mode: 'insensitive' } },
       { userName: { contains: params.search, mode: 'insensitive' } },
       { details: { contains: params.search, mode: 'insensitive' } },
+      { userEmail: { contains: params.search, mode: 'insensitive' } },
     ];
   }
   const [logs, total] = await Promise.all([
@@ -759,7 +760,7 @@ export const updateEssayScore = async (
     totalScore += ans.pointsEarned || 0;
   });
   const totalQuestions = answersDetail.length;
-  const newAccuracy = totalQuestions > 0 ? Math.round(totalScore / totalQuestions) : 0;
+  const newAccuracy = totalQuestions > 0 ? Math.min(100, Math.round(totalScore / totalQuestions)) : 0;
 
   // Update in DB
   const updatedResult = await prisma.result.update({

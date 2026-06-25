@@ -17,9 +17,22 @@ export const createSystemLog = async ({
     console.log("🔥 CREATE SYSTEM LOG:", action);
 
     let resolvedEmail = userEmail;
+
+    // Prioritas 1: resolve via userId
     if (!resolvedEmail && userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
+        select: { email: true },
+      });
+      if (user) {
+        resolvedEmail = user.email;
+      }
+    }
+
+    // Prioritas 2: fallback resolve via userName (jika userId tidak tersedia)
+    if (!resolvedEmail && userName) {
+      const user = await prisma.user.findFirst({
+        where: { name: { equals: userName, mode: "insensitive" } },
         select: { email: true },
       });
       if (user) {
@@ -41,4 +54,4 @@ export const createSystemLog = async ({
   } catch (error) {
     console.error("❌ Failed create system log:", error);
   }
-};
+};
