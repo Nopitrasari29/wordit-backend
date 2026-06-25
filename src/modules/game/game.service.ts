@@ -433,12 +433,6 @@ export const finishGame = async (
     where: { gameId, userId, isCompleted: false },
     orderBy: { startedAt: "desc" },
   });
-  console.log("========== FINISH DEBUG ==========");
-  console.log("gameId:", gameId);
-  console.log("userId:", userId);
-  console.log("session:", session);
-  console.log("==================================");
-
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) throw new Error("Game tidak ditemukan");
 

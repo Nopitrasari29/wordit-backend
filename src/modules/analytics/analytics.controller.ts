@@ -58,11 +58,6 @@ export const getTeacherClasses = async (req: Request, res: Response) => {
 // Dashboard Admin (Stats & Logs)
 export const getAdminStats = async (req: Request, res: Response) => {
     try {
-        const user = (req as any).user;
-        if (!user || user.role !== "SUPER_ADMIN") {
-            return res.status(403).json({ status: "error", message: "Forbidden. Admin only." });
-        }
-
         const data = await getAdminStatsService();
 
         return res.status(200).json({ status: "success", data });
