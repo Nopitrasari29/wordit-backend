@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as aiController from "./ai.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
 import { generateQuizSchema } from "./ai.schema"; // ✅ TAMBAHAN: Schema yang kita buat tadi
-import { uploadMiddleware } from "../../middleware/upload.middleware";
+import { documentUploadMiddleware } from "../../middleware/upload.middleware";
 import { validate } from "../../middleware/validate.middleware";
 
 const router = Router();
@@ -62,7 +62,7 @@ router.get(
 router.post(
   "/extract-text",
   authMiddleware(["TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]),
-  uploadMiddleware("file"),
+  documentUploadMiddleware("file"),
   aiController.extractText,
 );
 
