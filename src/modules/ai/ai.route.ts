@@ -1,8 +1,9 @@
 import { Router } from "express";
 import * as aiController from "./ai.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
-import { validate } from "../../middleware/validate.middleware";
 import { generateQuizSchema } from "./ai.schema"; // ✅ TAMBAHAN: Schema yang kita buat tadi
+import { uploadMiddleware } from "../../middleware/upload.middleware";
+import { validate } from "../../middleware/validate.middleware";
 
 const router = Router();
 
@@ -52,6 +53,17 @@ router.get(
   "/quota-status",
   authMiddleware(["SUPER_ADMIN", "SCHOOL_ADMIN"]),
   aiController.getQuotaStatus,
+);
+
+/**
+ * 📄 EXTRACT TEXT FROM UPLOADED DOCUMENT
+ * Bisa diakses oleh TEACHER, SCHOOL_ADMIN, dan SUPER_ADMIN untuk mengurai materi PDF/Word/JPG dll.
+ */
+router.post(
+  "/extract-text",
+  authMiddleware(["TEACHER", "SCHOOL_ADMIN", "SUPER_ADMIN"]),
+  uploadMiddleware("file"),
+  aiController.extractText,
 );
 
 export default router;

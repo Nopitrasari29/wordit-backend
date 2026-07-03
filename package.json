@@ -52,6 +52,7 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "ltijs": "^5.9.9",
+    "mammoth": "^1.12.0",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.9",
     "openai": "^6.34.0",

@@ -305,7 +305,10 @@ export const updateProfile = async (
       email: data.email ?? user.email,
       ...(hashedPassword && { password: hashedPassword }),
       photoUrl: updatedPicturePath,
-      approvalStatus: data.approvalStatus ?? user.approvalStatus, // Ubah akun ke status PENDING secara resmi jika dipicu
+      approvalStatus: data.approvalStatus ?? user.approvalStatus,
+      // 🛠️ CRITICAL FIX: Simpan phoneNumber & schoolOrigin jika dikirim dari frontend
+      ...(data.phoneNumber !== undefined && { phoneNumber: data.phoneNumber }),
+      ...(data.schoolOrigin !== undefined && { schoolOrigin: data.schoolOrigin }),
 
       // KUNCI UTAMA WORKFLOW: Jangan pernah ubah kolom utama jika status pengajuannya adalah PENDING!
       ...(data.approvalStatus !== "PENDING" && data.educationLevels !== undefined && {
@@ -320,6 +323,8 @@ export const updateProfile = async (
       approvalStatus: true,
       educationLevels: true,
       photoUrl: true,
+      phoneNumber: true,
+      schoolOrigin: true,
       updatedAt: true,
       profile: { select: { bio: true, totalPoints: true, badges: true } },
     },
@@ -531,6 +536,8 @@ export const bulkImportUsers = async (
     passwordRaw: string;
     role: Role;
     educationLevels?: EducationLevel[];
+    schoolOrigin?: string;
+    phoneNumber?: string;
   }>,
   adminUserId?: string,
   requester?: any
@@ -584,10 +591,12 @@ export const bulkImportUsers = async (
       }
       const educationLevels = Array.isArray(item.educationLevels) ? item.educationLevels : [];
 
-      // SCHOOL_ADMIN: otomatis set schoolOrigin ke sekolah admin
-      const schoolOrigin = (requester?.role === "SCHOOL_ADMIN" && requester?.schoolOrigin)
+      // SCHOOL_ADMIN: otomatis set schoolOrigin ke sekolah admin, jika bukan gunakan dari data CSV
+      const targetSchool = (requester?.role === "SCHOOL_ADMIN" && requester?.schoolOrigin)
         ? requester.schoolOrigin
-        : null;
+        : (item.schoolOrigin || null);
+
+      const targetPhone = item.phoneNumber || null;
 
       await prisma.user.create({
         data: {
@@ -598,7 +607,8 @@ export const bulkImportUsers = async (
           approvalStatus: ApprovalStatus.APPROVED,
           isVerified: true,
           educationLevels,
-          schoolOrigin,
+          schoolOrigin: targetSchool,
+          phoneNumber: targetPhone,
           profile: {
             create: {
               bio: "Halo, saya pengguna WordIT!",

@@ -4,8 +4,10 @@ import {
   generateFeedbackContent,
   getApiUsageStats,
   performSmartGrading, 
+  extractTextFromFile,
 } from "./ai.service";
 import { SmartGradingService } from "./smart-grading.service";
+import fs from "fs";
 
 // =====================================================================
 // 🤖 1. GENERATE QUIZ CONTENT (AI-05, AI-08, AI-10)
@@ -125,6 +127,43 @@ export const getQuotaStatus = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+// =====================================================================
+// 🤖 5. EXTRACT TEXT FROM UPLOADED DOCUMENT (PDF, DOCX, TXT, IMAGES)
+// =====================================================================
+export const extractText = async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "File tidak diunggah / tidak valid.",
+      });
+    }
+
+    const text = await extractTextFromFile(file.path, file.originalname, file.mimetype);
+
+    // Hapus file temporary
+    try {
+      fs.unlinkSync(file.path);
+    } catch {}
+
+    return res.status(200).json({
+      success: true,
+      message: "Ekstraksi teks berhasil.",
+      data: { text },
+    });
+  } catch (error: any) {
+    if (req.file?.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {}
+    }
     return res.status(500).json({
       success: false,
       message: error.message,

@@ -519,3 +519,85 @@ export const performSmartGrading = async (
 ) => {
   return SmartGradingService.gradeEssay(question, keywords, answer);
 };
+
+// ✅ AI-DOCS-UPLOAD: Ekstraksi teks dari file (TXT, MD, PDF, DOCX, Images)
+import fs from "fs";
+import mammoth from "mammoth";
+
+export const extractTextFromFile = async (
+  filePath: string,
+  fileName: string,
+  mimeType: string
+): Promise<string> => {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+
+  // 1. Plain text / Markdown
+  if (ext === "txt" || ext === "md" || mimeType.startsWith("text/")) {
+    return fs.readFileSync(filePath, "utf8");
+  }
+
+  // 2. Word Document (.docx)
+  if (ext === "docx" || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    try {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value || "";
+    } catch (err: any) {
+      throw new Error(`Gagal membaca file Word: ${err.message}`);
+    }
+  }
+
+  // 3. PDF atau Gambar (JPG, JPEG, PNG, WEBP)
+  if (
+    ext === "pdf" ||
+    mimeType === "application/pdf" ||
+    mimeType.startsWith("image/")
+  ) {
+    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY belum diset di server backend");
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const fileBuffer = fs.readFileSync(filePath);
+    const base64Data = fileBuffer.toString("base64");
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: "Ekstrak teks lengkap dari dokumen/gambar ini apa adanya secara objektif, tanpa tambahan penjelasan, opini, salam, atau format markdown pembuka/penutup. Keluarkan teks mentahnya saja."
+                },
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      const data: any = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Gemini API error");
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.find((p: any) => p?.text)?.text;
+      if (!text) {
+        throw new Error("Teks kosong hasil ekstraksi Gemini");
+      }
+      return text;
+    } catch (err: any) {
+      throw new Error(`Gagal mengekstrak teks dengan Gemini: ${err.message}`);
+    }
+  }
+
+  throw new Error(`Format file .${ext} (${mimeType}) tidak didukung.`);
+};
