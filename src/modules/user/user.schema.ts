@@ -6,8 +6,8 @@ export const updateUserSchema = z.object({
   email: z.string().email("Invalid email format").optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string().min(8, "Password must be at least 8 characters").optional(),
-  bio: z.string().max(250, "Bio cannot exceed 250 characters").optional(),
-  
+  bio: z.string().max(500, "Bio cannot exceed 500 characters").optional(),
+
   // 🛠️ FIX UTAMA: Daftarkan properti educationLevels agar lolos dari pembuangan Zod safeParse
   educationLevels: z
     .preprocess((val) => {
@@ -22,6 +22,11 @@ export const updateUserSchema = z.object({
       return val;
     }, z.array(z.nativeEnum(EducationLevel)))
     .optional(),
+
+  // ✅ FIX KRITIS: Daftarkan phoneNumber & schoolOrigin agar tidak dibuang Zod
+  phoneNumber: z.string().max(20).optional().nullable(),
+  schoolOrigin: z.string().max(150).optional().nullable(),
+
 }).refine((data) => {
   // Kalau isi newPassword, wajib isi currentPassword juga
   if (data.newPassword && !data.currentPassword) {
@@ -33,4 +38,4 @@ export const updateUserSchema = z.object({
   path: ["currentPassword"],
 })
 
-export type UpdateUserInput = z.infer<typeof updateUserSchema>
+export type UpdateUserInput = z.infer<typeof updateUserSchema>

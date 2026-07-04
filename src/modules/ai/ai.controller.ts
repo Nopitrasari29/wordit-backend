@@ -137,21 +137,51 @@ export const getQuotaStatus = async (req: Request, res: Response) => {
 // 🤖 5. EXTRACT TEXT FROM UPLOADED DOCUMENT (PDF, DOCX, TXT, IMAGES)
 // =====================================================================
 export const extractText = async (req: Request, res: Response) => {
+  let tempFilePath: string | null = null;
   try {
     const file = req.file;
     if (!file) {
       return res.status(400).json({
         success: false,
-        message: "File tidak diunggah / tidak valid.",
+        message: "File tidak diunggah atau format tidak didukung. Pastikan file berupa PDF, DOCX, TXT, atau gambar.",
       });
     }
 
-    const text = await extractTextFromFile(file.path, file.originalname, file.mimetype);
+    // Tentukan path file: bisa dari diskStorage (file.path) atau memoryStorage (file.buffer)
+    let filePath: string;
+    if (file.path) {
+      // DiskStorage: file sudah tersimpan di disk
+      filePath = file.path;
+    } else if (file.buffer) {
+      // MemoryStorage: tulis buffer ke file sementara
+      const os = require("os");
+      const path = require("path");
+      const ext = file.originalname.split(".").pop() || "tmp";
+      tempFilePath = path.join(os.tmpdir(), `wordit-upload-${Date.now()}.${ext}`);
+      fs.writeFileSync(tempFilePath, file.buffer);
+      filePath = tempFilePath;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "File tidak dapat dibaca dari server.",
+      });
+    }
 
-    // Hapus file temporary
-    try {
-      fs.unlinkSync(file.path);
-    } catch {}
+    const text = await extractTextFromFile(filePath, file.originalname, file.mimetype);
+
+    // Cleanup: hapus file disk (dari diskStorage) atau file temp (dari memoryStorage)
+    const pathToDelete = file.path || tempFilePath;
+    if (pathToDelete) {
+      try { fs.unlinkSync(pathToDelete); } catch { /* ignore */ }
+    }
+    tempFilePath = null;
+
+    if (!text || text.trim().length === 0) {
+      return res.status(422).json({
+        success: false,
+        message: "Teks berhasil diekstrak namun hasilnya kosong. Pastikan dokumen berisi teks yang dapat dibaca.",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -159,14 +189,14 @@ export const extractText = async (req: Request, res: Response) => {
       data: { text },
     });
   } catch (error: any) {
-    if (req.file?.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {}
-    }
+    // Cleanup jika error
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch { /* ignore */ } }
+    if (tempFilePath) { try { fs.unlinkSync(tempFilePath); } catch { /* ignore */ } }
+
+    console.error("❌ extractText error:", error.message);
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Gagal mengekstrak teks dari dokumen.",
     });
   }
-};
+};
