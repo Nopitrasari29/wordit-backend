@@ -546,7 +546,26 @@ export const extractTextFromFile = async (
     }
   }
 
-  // 3. PDF atau Gambar (JPG, JPEG, PNG, WEBP)
+  // 3. PDF (Coba parsing lokal dulu agar instan dan gratis)
+  if (ext === "pdf" || mimeType === "application/pdf") {
+    try {
+      const pdfParse = require("pdf-parse");
+      const fileBuffer = fs.readFileSync(filePath);
+      const pdfData = await pdfParse(fileBuffer);
+      const extractedText = pdfData.text || "";
+
+      // Jika berhasil mengekstrak teks nyata secara lokal (tidak kosong)
+      if (extractedText.trim().length > 10) {
+        console.log("✨ PDF teks berhasil diekstrak secara lokal menggunakan pdf-parse secara instan!");
+        return extractedText;
+      }
+      console.log("⚠️ pdf-parse lokal menghasilkan teks kosong (mungkin hasil scan). Melakukan fallback ke Gemini Vision...");
+    } catch (err: any) {
+      console.warn("⚠️ Gagal mengekstrak PDF secara lokal, mencoba fallback ke Gemini Vision:", err.message);
+    }
+  }
+
+  // 4. Fallback ke Gambar atau PDF Scan via Gemini API
   if (
     ext === "pdf" ||
     mimeType === "application/pdf" ||
@@ -560,6 +579,10 @@ export const extractTextFromFile = async (
     const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const fileBuffer = fs.readFileSync(filePath);
     const base64Data = fileBuffer.toString("base64");
+
+    // Batasi request Gemini API agar tidak hang selamanya jika gagal respon
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 Detik Timeout
 
     try {
       const response = await fetch(url, {
@@ -581,8 +604,11 @@ export const extractTextFromFile = async (
               ]
             }
           ]
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       const data: any = await response.json();
       if (!response.ok) {
@@ -595,6 +621,10 @@ export const extractTextFromFile = async (
       }
       return text;
     } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("Koneksi ke Google Gemini API timeout (melampaui 60 detik). Coba unggah file yang lebih kecil atau periksa jaringan.");
+      }
       throw new Error(`Gagal mengekstrak teks dengan Gemini: ${err.message}`);
     }
   }
