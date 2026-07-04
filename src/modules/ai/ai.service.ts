@@ -550,14 +550,25 @@ export const extractTextFromFile = async (
   if (ext === "pdf" || mimeType === "application/pdf") {
     try {
       const pdfParse = require("pdf-parse");
-      const fileBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(fileBuffer);
+      // 🚀 PERF FIX: Batasi maks 50 halaman agar tidak parsing seluruh buku teks
+      const MAX_PAGES = 50;
+      const fileBuffer = await fs.promises.readFile(filePath);
+      const pdfData = await pdfParse(fileBuffer, {
+        max: MAX_PAGES, // parse halaman pertama saja, cukup untuk quiz generation
+      });
       const extractedText = pdfData.text || "";
 
       // Jika berhasil mengekstrak teks nyata secara lokal (tidak kosong)
       if (extractedText.trim().length > 10) {
-        console.log("✨ PDF teks berhasil diekstrak secara lokal menggunakan pdf-parse secara instan!");
-        return extractedText;
+        const pageInfo = pdfData.numpages > MAX_PAGES
+          ? ` (hanya ${MAX_PAGES} dari ${pdfData.numpages} halaman diproses)`
+          : ` (${pdfData.numpages} halaman)`;
+        console.log(`✨ PDF teks berhasil diekstrak secara lokal menggunakan pdf-parse${pageInfo}`);
+        // 🚀 PERF FIX: Potong teks ke 15.000 karakter agar context AI tidak bloat
+        const MAX_TEXT_CHARS = 15000;
+        return extractedText.length > MAX_TEXT_CHARS
+          ? extractedText.substring(0, MAX_TEXT_CHARS) + "\n\n[...teks dipotong karena dokumen terlalu panjang. Gunakan bagian awal sebagai referensi quiz.]"
+          : extractedText;
       }
       console.log("⚠️ pdf-parse lokal menghasilkan teks kosong (mungkin hasil scan). Melakukan fallback ke Gemini Vision...");
     } catch (err: any) {
