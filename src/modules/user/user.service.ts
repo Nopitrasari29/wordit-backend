@@ -301,6 +301,26 @@ export const updateProfile = async (
   console.log("Photo URL yang akan disimpan:", updatedPicturePath);
   console.log("==================================");
 
+  // Membaca request langsung dari parameter data
+  let textBioToSave = data.bio !== undefined ? data.bio : user.profile?.bio || "";
+
+  // Jika ada titipan data dari pemisah string sebelumnya, bersihkan dulu agar tidak bertumpuk berulang-ulang
+  if (textBioToSave.includes("||PENDING_REQ_LEVELS||")) {
+    textBioToSave = textBioToSave.split("||PENDING_REQ_LEVELS||")[0].trim();
+  }
+
+  if (user.role === "TEACHER" && data.educationLevels !== undefined && data.approvalStatus === "PENDING") {
+    // Rekatkan array baru di belakang deskripsi bio murni
+    textBioToSave = `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
+  }
+
+  // Simpan/perbarui tabel profile
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: { bio: textBioToSave },
+    create: { userId, bio: textBioToSave },
+  });
+
   // 🛠️ CODES REALIGNMENT: Kembalikan query update user milik profile murni (menggunakan userId)
   const updated = await prisma.user.update({
     where: { id: userId },
