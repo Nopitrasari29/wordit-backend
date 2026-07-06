@@ -62,7 +62,7 @@ const computeBadges = (
     },
     {
       name: "Speedrun Demon",
-      icon: "⚡",
+      icon: "🚀",
       color: "bg-amber-100",
       description: "Selesaikan kuis dalam < 20 detik dengan akurasi >= 90%",
       isUnlocked: recentHistory.some((h) => h.timeSpent > 0 && h.timeSpent < 20 && h.accuracy >= 90),

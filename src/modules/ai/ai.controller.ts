@@ -157,9 +157,10 @@ export const extractText = async (req: Request, res: Response) => {
       const os = require("os");
       const path = require("path");
       const ext = file.originalname.split(".").pop() || "tmp";
-      tempFilePath = path.join(os.tmpdir(), `wordit-upload-${Date.now()}.${ext}`);
-      fs.writeFileSync(tempFilePath, file.buffer);
-      filePath = tempFilePath;
+      const generatedPath = path.join(os.tmpdir(), `wordit-upload-${Date.now()}.${ext}`) as string;
+      tempFilePath = generatedPath;
+      fs.writeFileSync(generatedPath, file.buffer);
+      filePath = generatedPath;
     } else {
       return res.status(400).json({
         success: false,

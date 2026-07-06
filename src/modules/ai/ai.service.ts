@@ -350,6 +350,20 @@ const processAiResponse = async (
 };
 
 /**
+ * Memotong topik secara cerdas jika terlalu panjang agar tidak membebani token LLM (C-09)
+ */
+const smartTruncateTopic = (text: string, maxWords = 2500): string => {
+  if (!text) return "";
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text;
+  
+  console.log(`✂️ Teks topik terdeteksi terlalu panjang (${words.length} kata). Dipotong cerdas menjadi ${maxWords} kata.`);
+  
+  // Ambil 2500 kata pertama
+  return words.slice(0, maxWords).join(" ") + "\n\n[... Teks dokumen dipotong karena terlalu panjang untuk pemrosesan AI ...]";
+};
+
+/**
  * Generator utama kuis (AI-05, AI-08, AI-10)
  */
 export const generateQuizContent = async (
@@ -360,12 +374,15 @@ export const generateQuizContent = async (
   difficulty: string = "MEDIUM",
   metadata?: { classGrade?: string, subject?: string, chapter?: string, topic?: string }
 ) => {
+  // C-09: Lakukan pemotongan cerdas jika payload materi dokumen terlalu masif
+  const processedTopic = smartTruncateTopic(topic);
+
   console.log(
     `[AI] Request -> ${templateType} | ${educationLevel} | Count: ${count} | Level: ${difficulty}`,
   );
 
   if (templateType === "ANAGRAM") {
-    return generateAnagram(topic, educationLevel, count);
+    return generateAnagram(processedTopic, educationLevel, count);
   }
 
   // 💡 OPTIMASI: Gunakan Gemini sebagai model utama jika jumlah soal > 5 ATAU tipe soal adalah ESSAY
@@ -385,7 +402,7 @@ export const generateQuizContent = async (
       );
       const res = await getGeminiResponse(
         systemPrompt,
-        `Topik: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`
+        `Topik: ${processedTopic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`
       );
       const data = await processAiResponse(res || "", "gemini");
       const itemCount = getItemsCount(data);
@@ -414,8 +431,7 @@ export const generateQuizContent = async (
         attempts + 1,
         metadata
       );
-      const contextualHint = metadata?.topic ? metadata.topic : topic;
-      const userPrompt = `Topik Utama: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Buatkan kuis edukatif kognitif tepat ${count} soal.`;
+      const userPrompt = `Topik Utama: ${processedTopic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Buatkan kuis edukatif kognitif tepat ${count} soal.`;
 
       const res = await getGroqResponse(systemPrompt, userPrompt);
       const data = await processAiResponse(res || "", "groq");
@@ -447,7 +463,7 @@ export const generateQuizContent = async (
   }
 
   // Fallback ke Gemini jika Groq gagal 3x (AI-05)
-  const fallbackMsg = `Groq gagal 3x pada kuis ${templateType} (topik: ${topic}). Fallback Gemini aktif.`;
+  const fallbackMsg = `Groq gagal 3x pada kuis ${templateType} (topik: ${processedTopic}). Fallback Gemini aktif.`;
   await sendTeleAlert(fallbackMsg);
   createSystemLog({
     action: "AI_FALLBACK_GEMINI",
@@ -463,10 +479,9 @@ export const generateQuizContent = async (
       3,
       metadata
     );
-    const contextualHint = metadata?.topic ? metadata.topic : topic;
     const res = await getGeminiResponse(
       systemPrompt,
-      `Topik: ${topic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`,
+      `Topik: ${processedTopic}. ${metadata?.topic ? `Spesifikasi Topik: ${metadata.topic}.` : ''} Hasilkan tepat ${count} soal dalam format JSON.`,
     );
     const data = await processAiResponse(res || "", "gemini");
 
@@ -550,25 +565,14 @@ export const extractTextFromFile = async (
   if (ext === "pdf" || mimeType === "application/pdf") {
     try {
       const pdfParse = require("pdf-parse");
-      // 🚀 PERF FIX: Batasi maks 50 halaman agar tidak parsing seluruh buku teks
-      const MAX_PAGES = 50;
-      const fileBuffer = await fs.promises.readFile(filePath);
-      const pdfData = await pdfParse(fileBuffer, {
-        max: MAX_PAGES, // parse halaman pertama saja, cukup untuk quiz generation
-      });
+      const fileBuffer = fs.readFileSync(filePath);
+      const pdfData = await pdfParse(fileBuffer);
       const extractedText = pdfData.text || "";
 
       // Jika berhasil mengekstrak teks nyata secara lokal (tidak kosong)
       if (extractedText.trim().length > 10) {
-        const pageInfo = pdfData.numpages > MAX_PAGES
-          ? ` (hanya ${MAX_PAGES} dari ${pdfData.numpages} halaman diproses)`
-          : ` (${pdfData.numpages} halaman)`;
-        console.log(`✨ PDF teks berhasil diekstrak secara lokal menggunakan pdf-parse${pageInfo}`);
-        // 🚀 PERF FIX: Potong teks ke 15.000 karakter agar context AI tidak bloat
-        const MAX_TEXT_CHARS = 15000;
-        return extractedText.length > MAX_TEXT_CHARS
-          ? extractedText.substring(0, MAX_TEXT_CHARS) + "\n\n[...teks dipotong karena dokumen terlalu panjang. Gunakan bagian awal sebagai referensi quiz.]"
-          : extractedText;
+        console.log("✨ PDF teks berhasil diekstrak secara lokal menggunakan pdf-parse secara instan!");
+        return extractedText;
       }
       console.log("⚠️ pdf-parse lokal menghasilkan teks kosong (mungkin hasil scan). Melakukan fallback ke Gemini Vision...");
     } catch (err: any) {

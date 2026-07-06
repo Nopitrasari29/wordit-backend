@@ -7,7 +7,11 @@ export const registerSchema = z.object({
   role: z.enum(["STUDENT", "TEACHER"]).default("STUDENT"),
   educationLevels: z.array(z.enum(["SD", "SMP", "SMA", "UNIVERSITY"])).optional(),
   schoolOrigin: z.string().optional(),
-  phoneNumber: z.string().optional(),
+  phoneNumber: z
+    .string()
+    .regex(/^[\d\s\-\+\(\)]{8,20}$/, "Format nomor HP tidak valid")
+    .optional()
+    .or(z.literal("")),
 }).refine(
   (data) => {
     // Teacher WAJIB isi educationLevels

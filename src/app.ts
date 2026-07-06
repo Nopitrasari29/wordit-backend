@@ -102,6 +102,22 @@ app.use((req, res) => {
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Tangkap error multer (seperti file size limit)
+  if (err.name === "MulterError") {
+    let msg = err.message;
+    if (err.code === "LIMIT_FILE_SIZE") {
+      msg = "Ukuran berkas terlalu besar! Melebihi batas maksimal yang diperbolehkan.";
+    }
+    res.status(400).json(errorResponse(msg));
+    return;
+  }
+
+  // Tangkap error format file custom dari upload.middleware
+  if (err.message && err.message.includes("allowed") || err.message.includes("format berkas")) {
+    res.status(400).json(errorResponse(err.message));
+    return;
+  }
+
   console.error("🔥 Server Error Detail:");
   console.error(err.stack || err.message);
   res.status(500).json(errorResponse(err.message || "Internal Server Error"));

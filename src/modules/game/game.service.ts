@@ -260,7 +260,23 @@ export const togglePublish = async (gameId: string, userId: string) => {
 export const getMyGames = async (userId: string) => {
   return await prisma.game.findMany({
     where: { creatorId: userId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      templateType: true,
+      educationLevel: true,
+      classGrade: true,
+      subject: true,
+      difficulty: true,
+      playCount: true,
+      isPublished: true,
+      shareCode: true,
+      createdAt: true,
+      updatedAt: true,
+    },
     orderBy: { createdAt: "desc" },
+    take: 100, // Ambil maksimal 100 game teratas untuk dashboard
   });
 };
 

@@ -34,6 +34,33 @@ export const getProfile = async (req: Request, res: Response) => {
   }
 };
 
+export const getPendingTeachersCount = async (req: Request, res: Response) => {
+  try {
+    const requester = req.user;
+    if (!requester) {
+      res.status(401).json(errorResponse("Unauthorized"));
+      return;
+    }
+
+    const where: any = {
+      role: Role.TEACHER,
+      approvalStatus: "PENDING",
+    };
+
+    // Jika School Admin, batasi hanya melihat dari sekolahnya sendiri
+    if (requester.role === "SCHOOL_ADMIN" && requester.schoolOrigin) {
+      where.schoolOrigin = requester.schoolOrigin;
+    }
+
+    const count = await prisma.user.count({ where });
+    res.status(200).json(successResponse({ count }, "Pending teachers count fetched"));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to get pending count";
+    res.status(500).json(errorResponse(message));
+  }
+};
+
+
 export const updateProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;

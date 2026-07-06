@@ -34,6 +34,9 @@ router.patch("/:id/approve-school-admin", authMiddleware(["SUPER_ADMIN"]), userC
 // ADMIN (SUPER_ADMIN atau SCHOOL_ADMIN)
 // ============================================================
 
+// GET jumlah pending teachers (SUPER_ADMIN atau SCHOOL_ADMIN)
+router.get("/pending-count", authMiddleware(["SUPER_ADMIN", "SCHOOL_ADMIN"]), userController.getPendingTeachersCount);
+
 // GET semua user (SCHOOL_ADMIN hanya melihat sekolahnya sendiri)
 router.get("/", authMiddleware(["SUPER_ADMIN", "SCHOOL_ADMIN"]), userController.getAllUsers);
 

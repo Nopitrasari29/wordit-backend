@@ -23,7 +23,7 @@ export const register = async (data: RegisterInput) => {
   const existing = await prisma.user.findUnique({
     where: { email: data.email },
   });
-  if (existing) throw new Error("Email already registered");
+  if (existing) throw new Error("Email sudah terdaftar!");
 
   const hashedPassword = await hashPassword(data.password);
 
@@ -177,14 +177,21 @@ export const login = async (data: LoginInput) => {
       phoneNumber: true,
       createdAt: true,
       updatedAt: true,
+      profile: {
+        select: {
+          bio: true,
+          totalPoints: true,
+          badges: true,
+        }
+      }
     },
   });
 
-  if (!user) throw new Error("Invalid email or password");
+  if (!user) throw new Error("Email atau password salah!");
 
   const isMatch = await comparePassword(data.password, user.password);
 
-  if (!isMatch) throw new Error("Invalid email or password");
+  if (!isMatch) throw new Error("Email atau password salah!");
 
   if (!user.isVerified) {
     throw new Error(
@@ -225,7 +232,7 @@ export const login = async (data: LoginInput) => {
     userId: user.id,
     email: user.email,
     role: user.role,
-    schoolOrigin: (user as any).schoolOrigin,
+    schoolOrigin: user.schoolOrigin,
   });
 
   return {
@@ -237,8 +244,9 @@ export const login = async (data: LoginInput) => {
       approvalStatus: user.approvalStatus,
       educationLevels: user.educationLevels,
       photoUrl: user.photoUrl ?? null,
-      schoolOrigin: (user as any).schoolOrigin ?? null,
-      phoneNumber: (user as any).phoneNumber ?? null,
+      schoolOrigin: user.schoolOrigin ?? null,
+      phoneNumber: user.phoneNumber ?? null,
+      profile: user.profile ?? null,
     },
     token,
   };
