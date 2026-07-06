@@ -6,6 +6,8 @@ import type { UpdateUserInput } from "./user.schema";
 import { createSystemLog } from "../../utils/system-logger";
 import { sendWelcomeEmail } from "../../utils/mailer";
 
+const SCHOOL_ADMIN_ROLE = "SCHOOL_ADMIN" as Role;
+
 // ============================================================
 // 1. GET ALL USERS (Admin Dashboard)
 // ============================================================
@@ -170,7 +172,7 @@ export const changeUserRole = async (
 
   if (newRole) {
     // Hanya Super Admin yang bisa assign SUPER_ADMIN, dan hanya untuk email resmi
-    if (newRole === Role.SUPER_ADMIN) {
+    if ((newRole as string) === "SUPER_ADMIN") {
       throw new Error("Role SUPER_ADMIN hanya dapat diassign melalui seed database secara langsung.");
     }
     if ((newRole as string) === "ADMIN") {
@@ -191,11 +193,13 @@ export const changeUserRole = async (
   }
 
   if (hasAdminAccess !== undefined) {
-    dataToUpdate.hasAdminAccess = hasAdminAccess;
+    // Prisma's generated UserUpdateInput may not include custom computed fields
+    // so cast to any to allow updating the property if it exists in the schema.
+    (dataToUpdate as any).hasAdminAccess = hasAdminAccess;
     // Auto sync role based on hasAdminAccess toggling
     if (hasAdminAccess && user.role === Role.TEACHER) {
-      dataToUpdate.role = Role.SCHOOL_ADMIN;
-    } else if (!hasAdminAccess && user.role === Role.SCHOOL_ADMIN) {
+      dataToUpdate.role = SCHOOL_ADMIN_ROLE;
+    } else if (!hasAdminAccess && user.role === SCHOOL_ADMIN_ROLE) {
       dataToUpdate.role = Role.TEACHER;
     }
   }
@@ -270,32 +274,32 @@ export const updateProfile = async (
   }
 
   let updatedPicturePath: string | null = user.photoUrl;
+
+  console.log("==================================");
+  console.log("Photo File:", photoFile);
+
   if (photoFile) {
-    const newPath = await FileManager.upload(`user/profile/${userId}`, photoFile);
-    if (user.photoUrl) await FileManager.remove(user.photoUrl);
+    console.log("Nama file:", photoFile.originalname);
+    console.log("Mime:", photoFile.mimetype);
+    console.log("Size:", photoFile.size);
+
+    const newPath = await FileManager.upload(
+      `user/profile/${userId}`,
+      photoFile
+    );
+
+    console.log("Hasil upload:", newPath);
+
+    if (user.photoUrl) {
+      console.log("Menghapus foto lama:", user.photoUrl);
+      await FileManager.remove(user.photoUrl);
+    }
+
     updatedPicturePath = newPath;
   }
 
-  // Membaca request langsung dari parameter data terowongan controller
-  let textBioToSave = data.bio !== undefined ? data.bio : user.profile?.bio || "";
-
-  // Jika ada titipan data dari pemisah string sebelumnya, bersihkan dulu agar tidak bertumpuk berulang-ulang
-  if (textBioToSave.includes("||PENDING_REQ_LEVELS||")) {
-    textBioToSave = textBioToSave.split("||PENDING_REQ_LEVELS||")[0].trim();
-  }
-
-  if (user.role === "TEACHER" && data.educationLevels !== undefined && data.approvalStatus === "PENDING") {
-    // Rekatkan array baru di belakang deskripsi bio murni
-    textBioToSave = `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
-    console.log("💾 Menyimpan Metadata Ajuan Baru ke Kolom Bio DB:", textBioToSave);
-  }
-
-  // Simpan/perbarui tabel profile
-  await prisma.userProfile.upsert({
-    where: { userId },
-    update: { bio: textBioToSave },
-    create: { userId, bio: textBioToSave },
-  });
+  console.log("Photo URL yang akan disimpan:", updatedPicturePath);
+  console.log("==================================");
 
   // 🛠️ CODES REALIGNMENT: Kembalikan query update user milik profile murni (menggunakan userId)
   const updated = await prisma.user.update({
@@ -587,7 +591,9 @@ export const bulkImportUsers = async (
       if (requester?.role === "SCHOOL_ADMIN") {
         role = (item.role === Role.TEACHER) ? Role.TEACHER : Role.STUDENT;
       } else {
-        role = (item.role === Role.SUPER_ADMIN || (item.role as string) === "ADMIN") ? Role.STUDENT : (item.role || Role.STUDENT);
+        // Role.SUPER_ADMIN does not exist in the generated Role enum; compare by string instead
+        const itemRoleStr = (item.role as string) || "";
+        role = (itemRoleStr === "SUPER_ADMIN" || itemRoleStr === "ADMIN") ? Role.STUDENT : (item.role || Role.STUDENT);
       }
       const educationLevels = Array.isArray(item.educationLevels) ? item.educationLevels : [];
 
@@ -645,9 +651,19 @@ export const bulkImportUsers = async (
 // RBAC: REQUEST SCHOOL ADMIN (oleh Teacher)
 // ============================================================
 export const requestSchoolAdmin = async (userId: string) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      adminRequestStatus: true,
+      schoolOrigin: true,
+    },
+  });
   if (!user) throw new Error("User tidak ditemukan");
-  if (user.role !== Role.TEACHER && user.role !== Role.SCHOOL_ADMIN)
+  if (user.role !== Role.TEACHER && user.role !== SCHOOL_ADMIN_ROLE)
     throw new Error("Hanya Teacher yang bisa mengajukan Admin Sekolah");
   if (user.adminRequestStatus === ApprovalStatus.PENDING)
     throw new Error("Pengajuan Admin Sekolah kamu masih dalam proses review");
@@ -712,13 +728,22 @@ export const approveSchoolAdmin = async (
   action: "APPROVE" | "REJECT",
   superAdminId?: string
 ) => {
-  const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+  const user = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      adminRequestStatus: true,
+    },
+  });
   if (!user) throw new Error("User tidak ditemukan");
   if (user.adminRequestStatus !== ApprovalStatus.PENDING)
     throw new Error("Tidak ada pengajuan Admin Sekolah yang sedang pending untuk user ini");
 
   const isApproved = action === "APPROVE";
-  const newRole = isApproved ? Role.SCHOOL_ADMIN : user.role;
+  const newRole = isApproved ? SCHOOL_ADMIN_ROLE : user.role;
   const newAdminRequestStatus = isApproved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
 
   const updated = await prisma.user.update({
@@ -774,7 +799,7 @@ export const approveSchoolAdmin = async (
 export const cancelSchoolAdmin = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User tidak ditemukan");
-  if (user.role !== Role.SCHOOL_ADMIN)
+  if (user.role !== SCHOOL_ADMIN_ROLE)
     throw new Error("Hanya Admin Sekolah yang bisa mengajukan pembatalan status admin");
 
   const updated = await prisma.user.update({

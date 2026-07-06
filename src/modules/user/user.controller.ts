@@ -86,7 +86,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     let updateData: any = { ...parsed.data };
 
     // 🛡️ SECURITY & APPROVAL WORKFLOW CONTROL
-    if (requesterRole !== Role.SUPER_ADMIN) {
+    if (requesterRole !== "SUPER_ADMIN") {
       delete updateData.role;
       
       // 📝 WORKFLOW CONTROL: Jika akun TEACHER mengajukan perubahan jenjang baru
