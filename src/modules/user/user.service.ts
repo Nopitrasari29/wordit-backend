@@ -314,16 +314,6 @@ export const updateProfile = async (
     textBioToSave = `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
   }
 
-  // Simpan/perbarui tabel profile
-  if (
-    user.role === "TEACHER" &&
-    data.educationLevels !== undefined &&
-    data.approvalStatus === "PENDING"
-  ) {
-    textBioToSave =
-      `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
-  }
-
   await prisma.userProfile.upsert({
     where: { userId },
     update: { bio: textBioToSave },
