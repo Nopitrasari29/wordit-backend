@@ -301,14 +301,21 @@ export const updateProfile = async (
   console.log("Photo URL yang akan disimpan:", updatedPicturePath);
   console.log("==================================");
 
+<<<<<<< HEAD
   // Membaca request langsung dari parameter data
   let textBioToSave = data.bio !== undefined ? data.bio : user.profile?.bio || "";
 
   // Jika ada titipan data dari pemisah string sebelumnya, bersihkan dulu agar tidak bertumpuk berulang-ulang
+=======
+  let textBioToSave =
+  data.bio !== undefined ? data.bio : user.profile?.bio || "";
+
+>>>>>>> 0acd817 (restore profile bio update)
   if (textBioToSave.includes("||PENDING_REQ_LEVELS||")) {
     textBioToSave = textBioToSave.split("||PENDING_REQ_LEVELS||")[0].trim();
   }
 
+<<<<<<< HEAD
   if (user.role === "TEACHER" && data.educationLevels !== undefined && data.approvalStatus === "PENDING") {
     // Rekatkan array baru di belakang deskripsi bio murni
     textBioToSave = `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
@@ -319,6 +326,26 @@ export const updateProfile = async (
     where: { userId },
     update: { bio: textBioToSave },
     create: { userId, bio: textBioToSave },
+=======
+  if (
+    user.role === "TEACHER" &&
+    data.educationLevels !== undefined &&
+    data.approvalStatus === "PENDING"
+  ) {
+    textBioToSave =
+      `${textBioToSave} ||PENDING_REQ_LEVELS||${JSON.stringify(data.educationLevels)}`;
+  }
+
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: {
+      bio: textBioToSave,
+    },
+    create: {
+      userId,
+      bio: textBioToSave,
+    },
+>>>>>>> 0acd817 (restore profile bio update)
   });
 
   // 🛠️ CODES REALIGNMENT: Kembalikan query update user milik profile murni (menggunakan userId)
